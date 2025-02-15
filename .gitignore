@@ -15,7 +15,7 @@ yarn-error.log*
 # Editor Configs
 .vscode/
 .idea/
-
+ 
 # OS-Specific Files
 .DS_Store
 Thumbs.db
