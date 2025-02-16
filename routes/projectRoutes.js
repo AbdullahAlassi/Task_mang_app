@@ -3,8 +3,7 @@ const router = express.Router();
 const Project = require('../models/projectModel');
 const authMiddleware = require('../middleware/auth');
 const roleMiddleware = require('../middleware/roleMiddleware');
-const validateMiddleware = require('../middleware/validateMiddleware');
-const { createProjectSchema } = require('../validators/validationSchemas');
+const { validateRequest, createProjectSchema } = require('../validators/validationSchemas');
 
 
 // Create a project
@@ -12,7 +11,7 @@ router.post(
   '/',
   authMiddleware,
   roleMiddleware(['admin', 'manager']),
-  validateMiddleware(createProjectSchema), // Apply validation
+  validateRequest(createProjectSchema), // Apply validation
   async (req, res) => {
     const { title, description, deadline } = req.body;
 
@@ -105,8 +104,6 @@ router.put('/:id', authMiddleware, roleMiddleware(['manager']), async (req, res)
     }
   });
 
-module.exports = router;
-
 // Create a project (only admin and manager can access)
 router.post('/', authMiddleware, roleMiddleware(['admin', 'manager']), async (req, res) => {
   const { title, description, deadline } = req.body;
@@ -126,22 +123,5 @@ router.post('/', authMiddleware, roleMiddleware(['admin', 'manager']), async (re
   }
 });
 
-router.post(
-  '/',
-  authMiddleware,
-  roleMiddleware(['admin', 'manager']),
-  validateProject, // Apply validation rules
-  handleValidationErrors, // Handle validation errors
-  async (req, res) => {
-    const { title, description, deadline } = req.body;
 
-    try {
-      const newProject = new Project({ title, description, deadline, manager: req.user.id });
-      await newProject.save();
-      res.status(201).json(newProject);
-    } catch (error) {
-      res.status(400).json({ error: error.message });
-    }
-  }
-);
-
+module.exports = router;

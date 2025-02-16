@@ -1,10 +1,13 @@
 const express = require('express');
-const router = express.Router();
 const User = require('../models/userModel');
 const authMiddleware = require('../middleware/auth');
 const bcrypt = require('bcrypt');
-const { validateRegistration }= require('../validators/a')
+const {check, validationResult }= require('express-validator');
+const { validateRegistration }= require('../validators/validationSchemas');
+const { handleValidationErrors, createProjectSchema, createTeamSchema, validateLogin }= require('../validators/validationSchemas');
 const jwt = require('jsonwebtoken');
+
+const router = express.Router();
 
 router.post(
   '/register',
@@ -40,7 +43,7 @@ router.post('/', async (req, res) => {
 });
 
 // Get all users
-router.get('/', async (req, res) => {
+router.get('/', authMiddleware, async (req, res) => {
   try {
     const users = await User.find();
     res.status(200).json(users);
@@ -50,9 +53,9 @@ router.get('/', async (req, res) => {
 });
 
 // Get user by ID
-router.get('/id', async (req, res) => {
+router.get('/id', authMiddleware,async (req, res) => {
   try {
-    const user = await User.findById(req.user.id);
+    const user = await User.findById(req.user.id).select('-password');// Exclude password from response
     if (!user) return res.status(404).json({ error: 'User not found' });
     res.status(200).json(user);
   } catch (error) {
@@ -126,7 +129,7 @@ router.get('/me', authMiddleware, async (req, res) => {
   });
   
   // Get all users (admin only)
-router.get('/', authMiddleware, async (req, res) => {
+router.get('/admin', authMiddleware, async (req, res) => {
     try {
       // Check if the logged-in user is an admin
       if (req.user.role !== 'admin') {
@@ -139,25 +142,6 @@ router.get('/', authMiddleware, async (req, res) => {
       res.status(500).json({ message: error.message });
     }
   });
- 
-
-  // Validation rules for user registration
-const validateRegistration = [
-  check('name').notEmpty().withMessage('Name is required'),
-  check('email').isEmail().withMessage('Invalid email format'),
-  check('password')
-    .isLength({ min: 6 })
-    .withMessage('Password must be at least 6 characters long'),
-];
-
-// Middleware to handle validation errors
-const handleValidationErrors = (req, res, next) => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return res.status(400).json({ errors: errors.array() });
-  }
-  next();
-};
 
 router.post(
   '/login',
@@ -188,6 +172,5 @@ router.post(
   }
 );
 
-module.exports = { validateRegistration, handleValidationErrors };
-
 module.exports = router;
+

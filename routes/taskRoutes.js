@@ -4,7 +4,6 @@ const Task = require('../models/taskModel');
 const Board = require('../models/boardModel');
 const authMiddleware = require('../middleware/auth');
 const multer = require('multer');
-const upload = multer({ dest: 'uploads/' }); // Save files in 'uploads/' directory
 const { sendNotification } = require('../app'); // Import notification function
 const upload = require('../middleware/fileUploadMiddleware');
 
