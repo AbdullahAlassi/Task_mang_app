@@ -6,30 +6,6 @@ const roleMiddleware = require('../middleware/roleMiddleware');
 const { validateRequest, createProjectSchema } = require('../validators/validationSchemas');
 
 
-// Create a project
-router.post(
-  '/',
-  authMiddleware,
-  roleMiddleware(['admin', 'manager']),
-  validateRequest(createProjectSchema), // Apply validation
-  async (req, res) => {
-    const { title, description, deadline } = req.body;
-
-    try {
-      const newProject = new Project({
-        title,
-        description,
-        deadline,
-        manager: req.user.id,
-      });
-
-      await newProject.save();
-      res.status(201).json(newProject);
-    } catch (error) {
-      res.status(400).json({ error: error.message });
-    }
-  }
-);
   
 
 // Get all projects
@@ -104,8 +80,8 @@ router.put('/:id', authMiddleware, roleMiddleware(['manager']), async (req, res)
     }
   });
 
-// Create a project (only admin and manager can access)
-router.post('/', authMiddleware, roleMiddleware(['admin', 'manager']), async (req, res) => {
+// Create a project
+router.post('/', authMiddleware, async (req, res) => {
   const { title, description, deadline } = req.body;
 
   try {
