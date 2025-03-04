@@ -3,36 +3,38 @@ const router = express.Router();
 const Task = require('../models/taskModel');
 const Board = require('../models/boardModel');
 const authMiddleware = require('../middleware/auth');
-const multer = require('multer');
-const { sendNotification } = require('../app'); // Import notification function
+const Notification = require('../models/notificationModel');
 const upload = require('../middleware/fileUploadMiddleware');
 
 // Create a new task
-router.post('/', authMiddleware, async (req, res) => {
-  const { title, description, deadline, boardId, members, attachments } = req.body;
-
+router.post('/:boardId', authMiddleware, async (req, res) => {
   try {
-    const board = await Board.findById(boardId);
+    const { title, description, deadline, assignedTo } = req.body;
+    const board = await Board.findById(req.params.boardId);
+    
     if (!board) return res.status(404).json({ message: 'Board not found' });
 
-    const newTask = new Task({
-      title,
-      description,
-      deadline,
-      board: boardId,
-      project: board.project, // Get project from board
-      members: members || [],
-      attachments: attachments || [],
-    });
-
+    const newTask = new Task({ title, description, deadline, board: board._id, assignedTo });
     await newTask.save();
+
     board.tasks.push(newTask._id);
     await board.save();
 
+     // 📌 Send notifications to assigned users
+     assignedTo.forEach(async (userId) => {
+      const notification = new Notification({
+        user: userId,
+        type: 'task',
+        message: `You have been assigned a new task: ${title}`
+      });
+      await notification.save();
+    });
+
     res.status(201).json(newTask);
   } catch (error) {
-    res.status(400).json({ error: error.message });
+    res.status(500).json({ message: 'Error creating task', error });
   }
+
 });
 
 // Get all tasks for a board

@@ -3,6 +3,7 @@ const router = express.Router();
 const Project = require('../models/projectModel');
 const authMiddleware = require('../middleware/auth');
 const roleMiddleware = require('../middleware/roleMiddleware');
+const Notification = require('../models/notificationModel');
 const { validateRequest, createProjectSchema } = require('../validators/validationSchemas');
 
 
@@ -82,22 +83,33 @@ router.put('/:id', authMiddleware, roleMiddleware(['manager']), async (req, res)
 
 // Create a project
 router.post('/', authMiddleware, async (req, res) => {
-  const { title, description, deadline } = req.body;
-
   try {
+    const { title, description, deadline, members } = req.body;
     const newProject = new Project({
       title,
       description,
       deadline,
-      manager: req.user.id,
+      manager: req.user.id, // Assigning the creator as manager
+      members: [...new Set([...members, req.user.id])], // Ensure manager is also a member
     });
 
+     
     await newProject.save();
+
+    // 📌 Send notifications to assigned users
+     members.forEach(async (userId) => {
+      const notification = new Notification({
+        user: userId,
+        type: 'project',
+        message: `You have been assigned a new project: ${title}`
+      });
+      await notification.save();
+    });
+
     res.status(201).json(newProject);
   } catch (error) {
-    res.status(400).json({ error: error.message });
+    res.status(500).json({ message: 'Error creating project',error: error.message });
   }
 });
-
 
 module.exports = router;

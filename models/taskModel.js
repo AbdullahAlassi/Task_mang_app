@@ -1,20 +1,12 @@
 const mongoose = require('mongoose');
 
-const TaskSchema = new mongoose.Schema({
-  boardId: { type: mongoose.Schema.Types.ObjectId, ref: 'Board', required: true },
+const taskSchema = new mongoose.Schema({
   title: { type: String, required: true },
   description: { type: String },
+  status: { type: String, enum: ['To Do', 'In Progress', 'Done'], default: 'To Do' },
   deadline: { type: Date },
-  project: { type: mongoose.Schema.Types.ObjectId, ref: 'Project', required: true },
-  members: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
-  attachments: [String],
-  subtasks: [
-    {
-      title: { type: String, required: true },
-      deadline: { type: Date },
-    },
-  ],
-  createdAt: { type: Date, default: Date.now },
-});
+  board: { type: mongoose.Schema.Types.ObjectId, ref: 'Board', required: true },
+  assignedTo: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }], // Assigned users
+}, { timestamps: true });
 
-module.exports = mongoose.model('Task', TaskSchema);
+module.exports = mongoose.model('Task', taskSchema);
