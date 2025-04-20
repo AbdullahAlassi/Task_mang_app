@@ -1,10 +1,11 @@
 import 'dart:convert';
+import 'dart:async';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/user_model.dart';
 
 class AuthService {
-  static const String baseUrl = 'http://localhost:3000/api';
+  static const String baseUrl = 'http://10.0.2.2:3000/api';
 
   Future<User> register({
     required String name,
@@ -12,6 +13,7 @@ class AuthService {
     required String password,
   }) async {
     try {
+      print('Sending registration request...');
       final response = await http.post(
         Uri.parse('$baseUrl/auth/register'),
         headers: {'Content-Type': 'application/json'},
@@ -22,14 +24,39 @@ class AuthService {
         }),
       );
 
+      print('Response status code: ${response.statusCode}');
+      print('Response body: ${response.body}');
+
       if (response.statusCode == 201) {
-        final data = json.decode(response.body);
-        return User.fromJson(data['user']);
+        try {
+          final data = json.decode(response.body);
+          print('Decoded response data: $data');
+
+          // Create a User object with the provided data since the backend
+          // only returns a success message
+          return User(
+            id: '', // You might want to get this from the backend
+            name: name,
+            email: email,
+          );
+        } catch (e) {
+          print('Error parsing response: $e');
+          throw Exception('Failed to parse server response: $e');
+        }
       } else {
-        final error = json.decode(response.body);
-        throw Exception(error['message'] ?? 'Registration failed');
+        try {
+          final error = json.decode(response.body);
+          print('Error response: $error');
+          throw Exception(error['message'] ??
+              'Registration failed with status ${response.statusCode}');
+        } catch (e) {
+          print('Error parsing error response: $e');
+          throw Exception(
+              'Registration failed with status ${response.statusCode}');
+        }
       }
     } catch (e) {
+      print('Registration error: $e');
       throw Exception('Registration failed: $e');
     }
   }
@@ -94,5 +121,11 @@ class AuthService {
   Future<String?> getToken() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString('token');
+  }
+
+  // Clear token from shared preferences
+  Future<void> clearToken() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('token');
   }
 }

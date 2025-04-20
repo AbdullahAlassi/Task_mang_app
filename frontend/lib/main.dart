@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
+import 'package:frontend/screens/projects/projects_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:jwt_decoder/jwt_decoder.dart';
 import 'config/theme.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/dashboard/dashboard_screen.dart';
-import 'services/auth_service.dart';
+import 'providers/whiteboard_provider.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -37,7 +38,6 @@ class MyApp extends StatefulWidget {
 class _MyAppState extends State<MyApp> {
   bool _isLoggedIn = false;
   bool _isLoading = true;
-  final _authService = AuthService();
 
   @override
   void initState() {
@@ -46,49 +46,40 @@ class _MyAppState extends State<MyApp> {
   }
 
   Future<void> _checkLoginStatus() async {
-    try {
-      final token = await _authService.getToken();
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token');
 
-      if (token != null) {
-        // Check if token is expired
-        if (JwtDecoder.isExpired(token)) {
-          await _authService.logout();
-          setState(() {
-            _isLoggedIn = false;
-            _isLoading = false;
-          });
-          return;
-        }
-      }
-
-      setState(() {
-        _isLoggedIn = token != null;
-        _isLoading = false;
-      });
-    } catch (e) {
-      // If any error occurs, assume user is not logged in
-      setState(() {
-        _isLoggedIn = false;
-        _isLoading = false;
-      });
-    }
+    setState(() {
+      _isLoggedIn = token != null;
+      _isLoading = false;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Task Management',
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.darkTheme,
-      home: _isLoading
-          ? const Scaffold(
-              body: Center(
-                child: CircularProgressIndicator(),
-              ),
-            )
-          : _isLoggedIn
-              ? const DashboardScreen()
-              : const LoginScreen(),
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => WhiteboardProvider()),
+      ],
+      child: MaterialApp(
+        title: 'Task Management',
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.darkTheme,
+        home: _isLoading
+            ? const Scaffold(
+                body: Center(
+                  child: CircularProgressIndicator(),
+                ),
+              )
+            : _isLoggedIn
+                ? const DashboardScreen()
+                : const LoginScreen(),
+        routes: {
+          '/dashboard': (context) => const DashboardScreen(),
+          '/projects': (context) => const ProjectsScreen(),
+          '/login': (context) => const LoginScreen(),
+        },
+      ),
     );
   }
 }

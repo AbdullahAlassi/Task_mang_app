@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:frontend/screens/projects/create_project_screen.dart';
+import 'package:frontend/screens/projects/projects_screen.dart';
+import 'package:frontend/screens/tasks/create_task_screen.dart';
 import 'package:intl/intl.dart';
 import '../../config/app_colors.dart';
 import '../../models/project_model.dart';
@@ -6,7 +9,6 @@ import '../../models/task_model.dart';
 import '../../services/project_service.dart';
 import '../../services/task_service.dart';
 import '../../services/auth_service.dart';
-import '../auth/login_screen.dart';
 import '../../widgets/bottom_navigation.dart';
 import '../../widgets/project_card.dart';
 import '../../widgets/search_bar.dart';
@@ -62,6 +64,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
       setState(() {
         _isLoading = false;
       });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to load data: $e')),
+        );
+      }
     }
   }
 
@@ -70,35 +78,148 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _currentNavIndex = index;
     });
 
-    // In a real app, you would navigate to different screens
-    // For now, we'll just show a message
-    if (index != 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Navigating to ${index == 1 ? 'Projects' : index == 2 ? 'Calendar' : 'Notifications'}',
-          ),
-          duration: const Duration(seconds: 1),
-        ),
-      );
+    // Handle navigation to different screens
+    switch (index) {
+      case 0:
+        // Already on dashboard
+        break;
+      case 1:
+        // Navigate to projects screen
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const ProjectsScreen()),
+        );
+        break;
+      case 2:
+        // Show create project/task dialog
+        _showCreateOptions();
+        break;
+      case 3:
+        // Navigate to calendar screen
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Calendar screen coming soon')),
+        );
+        break;
+      case 4:
+        // Navigate to notifications screen
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Notifications screen coming soon')),
+        );
+        break;
     }
+  }
+
+  void _showCreateOptions() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.cardColor,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) {
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 20.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Create New',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.textColor,
+                ),
+              ),
+              const SizedBox(height: 20),
+              ListTile(
+                leading: const Icon(Icons.task, color: AppColors.primaryColor),
+                title: const Text('New Task',
+                    style: TextStyle(color: AppColors.textColor)),
+                onTap: () {
+                  Navigator.pop(context);
+                  // Show project selection dialog for the task
+                  _showProjectSelectionDialog();
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _showProjectSelectionDialog() {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: AppColors.cardColor,
+          title: const Text('Select Project',
+              style: TextStyle(color: AppColors.textColor)),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: _recentProjects.length,
+              itemBuilder: (context, index) {
+                final project = _recentProjects[index];
+                return ListTile(
+                  title: Text(project.title,
+                      style: const TextStyle(color: AppColors.textColor)),
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) =>
+                            CreateTaskScreen(projectId: project.id),
+                      ),
+                    ).then((_) => _loadData());
+                  },
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   Future<void> _handleLogout() async {
     try {
+      print('Attempting to logout...');
       await _authService.logout();
+      print('Logout successful');
       if (mounted) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const LoginScreen()),
-        );
+        Navigator.pushReplacementNamed(context, '/login');
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      print('Logout Error:');
+      print('Error message: $e');
+      print('Stack trace:');
+      print(stackTrace);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Logout failed: ${e.toString()}'),
-            duration: const Duration(seconds: 3),
+            content: Text('Failed to logout: $e'),
+            duration: const Duration(seconds: 5),
+            action: SnackBarAction(
+              label: 'Copy Error',
+              onPressed: () {
+                // Copy error details to clipboard
+                final errorDetails = 'Error: $e\nStack trace:\n$stackTrace';
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                      content: Text('Error details copied to clipboard')),
+                );
+              },
+            ),
           ),
         );
       }
@@ -126,10 +247,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       elevation: 0,
                       leadingWidth: 60,
                       leading: IconButton(
-                        icon: const Icon(
-                          Icons.grid_view,
-                          color: AppColors.primaryColor,
-                        ),
+                        icon: const Icon(Icons.grid_view,
+                            color: AppColors.primaryColor),
                         onPressed: () {
                           // Open drawer or menu
                         },
@@ -144,11 +263,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ),
                       centerTitle: true,
                       actions: [
+                        // Logout Button
                         IconButton(
-                          icon: const Icon(
-                            Icons.logout,
-                            color: AppColors.primaryColor,
-                          ),
+                          icon: const Icon(Icons.logout,
+                              color: AppColors.primaryColor),
                           onPressed: _handleLogout,
                         ),
                         Container(
@@ -156,15 +274,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
                             border: Border.all(
-                              color: AppColors.primaryColor,
-                              width: 2,
-                            ),
+                                color: AppColors.primaryColor, width: 2),
                           ),
                           child: IconButton(
-                            icon: const Icon(
-                              Icons.person,
-                              color: AppColors.primaryColor,
-                            ),
+                            icon: const Icon(Icons.person,
+                                color: AppColors.primaryColor),
                             onPressed: () {
                               // Navigate to profile
                             },
@@ -190,9 +304,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     SliverToBoxAdapter(
                       child: Padding(
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 16.0,
-                          vertical: 8.0,
-                        ),
+                            horizontal: 16.0, vertical: 8.0),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
@@ -206,7 +318,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             ),
                             TextButton(
                               onPressed: () {
-                                // Navigate to all projects
+                                Navigator.pushReplacement(
+                                  context,
+                                  MaterialPageRoute(
+                                      builder: (context) =>
+                                          const ProjectsScreen()),
+                                );
                               },
                               child: const Text(
                                 'See All',
@@ -230,8 +347,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 child: Text(
                                   'No recent projects',
                                   style: TextStyle(
-                                    color: AppColors.secondaryTextColor,
-                                  ),
+                                      color: AppColors.secondaryTextColor),
                                 ),
                               ),
                             )
@@ -240,13 +356,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               child: ListView.builder(
                                 scrollDirection: Axis.horizontal,
                                 padding: const EdgeInsets.symmetric(
-                                  horizontal: 16.0,
-                                ),
+                                    horizontal: 16.0),
                                 itemCount: _recentProjects.length,
                                 itemBuilder: (context, index) {
                                   return ProjectCard(
-                                    project: _recentProjects[index],
-                                  );
+                                      project: _recentProjects[index]);
                                 },
                               ),
                             ),
@@ -256,9 +370,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     SliverToBoxAdapter(
                       child: Padding(
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 16.0,
-                          vertical: 8.0,
-                        ),
+                            horizontal: 16.0, vertical: 8.0),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
@@ -273,6 +385,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             TextButton(
                               onPressed: () {
                                 // Navigate to all tasks
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                      content:
+                                          Text('Tasks screen coming soon')),
+                                );
                               },
                               child: const Text(
                                 'See All',
@@ -296,8 +413,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 child: Text(
                                   'No ongoing tasks',
                                   style: TextStyle(
-                                    color: AppColors.secondaryTextColor,
-                                  ),
+                                      color: AppColors.secondaryTextColor),
                                 ),
                               ),
                             )
@@ -309,17 +425,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 crossAxisSpacing: 16,
                                 mainAxisSpacing: 16,
                               ),
-                              delegate: SliverChildBuilderDelegate((
-                                context,
-                                index,
-                              ) {
-                                return TaskCard(task: _ongoingTasks[index]);
-                              }, childCount: _ongoingTasks.length),
+                              delegate: SliverChildBuilderDelegate(
+                                (context, index) {
+                                  return TaskCard(task: _ongoingTasks[index]);
+                                },
+                                childCount: _ongoingTasks.length,
+                              ),
                             ),
                     ),
 
                     // Bottom padding for navigation bar
-                    const SliverToBoxAdapter(child: SizedBox(height: 80)),
+                    const SliverToBoxAdapter(
+                      child: SizedBox(height: 80),
+                    ),
                   ],
                 ),
               ),
