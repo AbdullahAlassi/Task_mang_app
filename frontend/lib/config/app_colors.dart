@@ -1,17 +1,29 @@
 import 'package:flutter/material.dart';
 
 class AppColors {
+  // Primary Colors
+  static const Color primaryColor = Color(0xFF2196F3);
+  static const Color accentColor = Color(0xFF64B5F6);
+  static const Color backgroundColor = Color(0xFF121212);
+  static const Color cardColor = Color(0xFF1E1E1E);
+
+  // Text Colors
+  static const Color textColor = Colors.white;
+  static const Color secondaryTextColor = Colors.grey;
+
+  // Status Colors
+  static const Color statusTodo = Colors.orange;
+  static const Color statusInProgress = Colors.blue;
+  static const Color statusDone = Colors.green;
+
+  // Error and Success Colors
+  static const Color errorColor = Colors.red;
+  static const Color successColor = Colors.green;
+
   // Main colors
-  static const Color primaryColor = Color(0xFF246BFD); // Blue accent color
-  static const Color backgroundColor = Color(0xFF181A20); // Dark background
-  static const Color cardColor = Color(0xFF1F222A); // Card/input background
   static const Color secondaryCardColor = Color(
     0xFF35383F,
   ); // Slightly lighter card color
-
-  // Text colors
-  static const Color textColor = Colors.white;
-  static const Color secondaryTextColor = Color(0xFF9E9E9E); // Gray text
 
   // UI element colors
   static const Color dividerColor = Color(0xFF35383F);
@@ -26,13 +38,6 @@ class AppColors {
   ); // Green for completed tasks
   static const Color projectRed = Color(0xFFF44336); // Red for urgent tasks
   static const Color projectYellow = Color(0xFFFFEB3B); // Yellow for warnings
-
-  // Status colors
-  static const Color statusTodo = Color(0xFF757575); // Gray for to-do
-  static const Color statusInProgress = Color(
-    0xFF246BFD,
-  ); // Blue for in progress
-  static const Color statusDone = Color(0xFF4CAF50); // Green for done
 
   // Gradients
   static const LinearGradient primaryGradient = LinearGradient(

@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:frontend/screens/profile/profile_screen.dart';
 import 'package:frontend/screens/projects/create_project_screen.dart';
 import 'package:frontend/screens/projects/projects_screen.dart';
 import 'package:frontend/screens/tasks/create_task_screen.dart';
+import 'package:frontend/screens/tasks/task_detail_screen.dart';
+import 'package:frontend/screens/tasks/ongoing_tasks_screen.dart';
 import 'package:intl/intl.dart';
 import '../../config/app_colors.dart';
 import '../../models/project_model.dart';
@@ -171,8 +174,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (context) =>
-                            CreateTaskScreen(projectId: project.id),
+                        builder: (context) => CreateTaskScreen(
+                          projectId: project.id,
+                          boardId: project.boardIds.isNotEmpty
+                              ? project.boardIds.first
+                              : 'default',
+                        ),
                       ),
                     ).then((_) => _loadData());
                   },
@@ -263,12 +270,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ),
                       centerTitle: true,
                       actions: [
-                        // Logout Button
-                        IconButton(
-                          icon: const Icon(Icons.logout,
-                              color: AppColors.primaryColor),
-                          onPressed: _handleLogout,
-                        ),
                         Container(
                           margin: const EdgeInsets.only(right: 16),
                           decoration: BoxDecoration(
@@ -280,7 +281,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             icon: const Icon(Icons.person,
                                 color: AppColors.primaryColor),
                             onPressed: () {
-                              // Navigate to profile
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => const ProfileScreen(),
+                                ),
+                              );
                             },
                           ),
                         ),
@@ -352,7 +358,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               ),
                             )
                           : SizedBox(
-                              height: 200,
+                              height: 250,
                               child: ListView.builder(
                                 scrollDirection: Axis.horizontal,
                                 padding: const EdgeInsets.symmetric(
@@ -384,12 +390,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             ),
                             TextButton(
                               onPressed: () {
-                                // Navigate to all tasks
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                      content:
-                                          Text('Tasks screen coming soon')),
-                                );
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) =>
+                                        const OngoingTasksScreen(),
+                                  ),
+                                ).then((_) => _loadData());
                               },
                               child: const Text(
                                 'See All',
@@ -408,8 +415,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     SliverPadding(
                       padding: const EdgeInsets.all(16.0),
                       sliver: _ongoingTasks.isEmpty
-                          ? SliverToBoxAdapter(
-                              child: const Center(
+                          ? const SliverToBoxAdapter(
+                              child: Center(
                                 child: Text(
                                   'No ongoing tasks',
                                   style: TextStyle(
@@ -427,9 +434,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               ),
                               delegate: SliverChildBuilderDelegate(
                                 (context, index) {
-                                  return TaskCard(task: _ongoingTasks[index]);
+                                  return TaskCard(
+                                    task: _ongoingTasks[index],
+                                    onTap: () {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (context) =>
+                                              TaskDetailScreen(
+                                            taskId: _ongoingTasks[index].id,
+                                          ),
+                                        ),
+                                      ).then((_) => _loadData());
+                                    },
+                                  );
                                 },
-                                childCount: _ongoingTasks.length,
+                                childCount: _ongoingTasks.length > 6
+                                    ? 6
+                                    : _ongoingTasks.length,
                               ),
                             ),
                     ),

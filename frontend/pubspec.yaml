@@ -41,6 +41,7 @@ dependencies:
   drag_and_drop_lists: ^0.4.2
   matrix_gesture_detector: ^0.2.0-nullsafety.1
   provider: ^6.1.1
+  image_picker: ^1.0.7
 
 dev_dependencies:
   flutter_test:

@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:provider/provider.dart';
-import 'package:frontend/providers/whiteboard_provider.dart';
 import '../../config/app_colors.dart';
 import '../../models/project_model.dart';
 import '../../models/task_model.dart';
@@ -10,7 +8,6 @@ import '../../services/task_service.dart';
 import '../tasks/create_task_screen.dart';
 import '../tasks/task_detail_screen.dart';
 import 'kanban_board_screen.dart';
-import 'whiteboard_screen.dart';
 
 class ProjectDetailScreen extends StatefulWidget {
   final String projectId;
@@ -30,11 +27,13 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
   bool _isLoading = true;
   late Project _project;
   List<Task> _tasks = [];
+  bool _isManager = false;
 
   @override
   void initState() {
     super.initState();
     _loadProjectDetails();
+    _checkIfManager();
   }
 
   Future<void> _loadProjectDetails() async {
@@ -64,6 +63,13 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
     }
   }
 
+  Future<void> _checkIfManager() async {
+    final currentUserId = await _projectService.getCurrentUserId();
+    setState(() {
+      _isManager = _project.managerId == currentUserId;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -83,20 +89,6 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
                 MaterialPageRoute(
                   builder: (context) =>
                       KanbanBoardScreen(projectId: widget.projectId),
-                ),
-              ).then((_) => _loadProjectDetails());
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.dashboard_customize),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => ChangeNotifierProvider(
-                    create: (_) => WhiteboardProvider(),
-                    child: WhiteboardScreen(projectId: _project.id),
-                  ),
                 ),
               ).then((_) => _loadProjectDetails());
             },
@@ -236,8 +228,12 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
                             Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (context) =>
-                                    CreateTaskScreen(projectId: _project.id),
+                                builder: (context) => CreateTaskScreen(
+                                  projectId: _project.id,
+                                  boardId: _project.boardIds.isNotEmpty
+                                      ? _project.boardIds.first
+                                      : 'default',
+                                ),
                               ),
                             ).then((_) => _loadProjectDetails());
                           },
@@ -278,7 +274,11 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
                                       context,
                                       MaterialPageRoute(
                                         builder: (context) => CreateTaskScreen(
-                                            projectId: _project.id),
+                                          projectId: _project.id,
+                                          boardId: _project.boardIds.isNotEmpty
+                                              ? _project.boardIds.first
+                                              : 'default',
+                                        ),
                                       ),
                                     ).then((_) => _loadProjectDetails());
                                   },
@@ -428,8 +428,16 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
                 leading: const Icon(Icons.edit, color: AppColors.primaryColor),
                 title: const Text('Edit Project',
                     style: TextStyle(color: AppColors.textColor)),
-                onTap: () {
+                onTap: () async {
                   Navigator.pop(context);
+                  if (!_isManager) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                          content: Text(
+                              'Only the project manager can edit the project.')),
+                    );
+                    return;
+                  }
                   // Navigate to edit project screen
                   Navigator.pushNamed(
                     context,
@@ -458,8 +466,16 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
                 leading: const Icon(Icons.delete, color: Colors.red),
                 title: const Text('Delete Project',
                     style: TextStyle(color: AppColors.textColor)),
-                onTap: () {
+                onTap: () async {
                   Navigator.pop(context);
+                  if (!_isManager) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                          content: Text(
+                              'Only the project manager can delete the project.')),
+                    );
+                    return;
+                  }
                   _confirmDeleteProject();
                 },
               ),

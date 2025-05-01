@@ -1,85 +1,33 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:provider/provider.dart';
-import 'package:frontend/screens/projects/projects_screen.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'config/theme.dart';
+import 'package:frontend/screens/auth/signup_screen.dart';
+import 'config/app_colors.dart';
+import 'config/app_theme.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/dashboard/dashboard_screen.dart';
-import 'providers/whiteboard_provider.dart';
+import 'screens/splash_screen.dart';
+import 'screens/projects/projects_screen.dart';
 
 void main() {
-  WidgetsFlutterBinding.ensureInitialized();
-
-  // Set preferred orientations
-  SystemChrome.setPreferredOrientations([
-    DeviceOrientation.portraitUp,
-    DeviceOrientation.portraitDown,
-  ]);
-
-  // Set system UI overlay style
-  SystemChrome.setSystemUIOverlayStyle(
-    const SystemUiOverlayStyle(
-      statusBarColor: Colors.transparent,
-      statusBarIconBrightness: Brightness.light,
-    ),
-  );
-
   runApp(const MyApp());
 }
 
-class MyApp extends StatefulWidget {
+class MyApp extends StatelessWidget {
   const MyApp({Key? key}) : super(key: key);
 
   @override
-  State<MyApp> createState() => _MyAppState();
-}
-
-class _MyAppState extends State<MyApp> {
-  bool _isLoggedIn = false;
-  bool _isLoading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _checkLoginStatus();
-  }
-
-  Future<void> _checkLoginStatus() async {
-    final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('token');
-
-    setState(() {
-      _isLoggedIn = token != null;
-      _isLoading = false;
-    });
-  }
-
-  @override
   Widget build(BuildContext context) {
-    return MultiProvider(
-      providers: [
-        ChangeNotifierProvider(create: (_) => WhiteboardProvider()),
-      ],
-      child: MaterialApp(
-        title: 'Task Management',
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.darkTheme,
-        home: _isLoading
-            ? const Scaffold(
-                body: Center(
-                  child: CircularProgressIndicator(),
-                ),
-              )
-            : _isLoggedIn
-                ? const DashboardScreen()
-                : const LoginScreen(),
-        routes: {
-          '/dashboard': (context) => const DashboardScreen(),
-          '/projects': (context) => const ProjectsScreen(),
-          '/login': (context) => const LoginScreen(),
-        },
-      ),
+    return MaterialApp(
+      title: 'Task Management App',
+      debugShowCheckedModeBanner: false,
+      theme: AppTheme.darkTheme,
+      initialRoute: '/',
+      routes: {
+        '/': (context) => const SplashScreen(),
+        '/login': (context) => const LoginScreen(),
+        '/register': (context) => const SignupScreen(),
+        '/dashboard': (context) => const DashboardScreen(),
+        '/projects': (context) => const ProjectsScreen(),
+      },
     );
   }
 }

@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../../config/app_colors.dart';
 import '../../../models/task_model.dart';
+import '../../../models/board_model.dart';
 import '../../../services/task_service.dart';
+import '../../../services/board_service.dart';
 import 'create_task_screen.dart';
 
 class TaskDetailScreen extends StatefulWidget {
@@ -19,8 +21,11 @@ class TaskDetailScreen extends StatefulWidget {
 
 class _TaskDetailScreenState extends State<TaskDetailScreen> {
   final TaskService _taskService = TaskService();
+  final BoardService _boardService = BoardService();
   bool _isLoading = true;
-  late Task _task;
+  Task? _task;
+  Board? _board;
+  String? _error;
 
   @override
   void initState() {
@@ -29,27 +34,33 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
   }
 
   Future<void> _loadTaskDetails() async {
+    if (!mounted) return;
+
     setState(() {
       _isLoading = true;
+      _error = null;
     });
 
     try {
       final task = await _taskService.getTaskDetails(widget.taskId);
+      if (!mounted) return;
+
+      // Fetch board details
+      final board = await _boardService.getBoardDetails(task.boardId);
+      if (!mounted) return;
 
       setState(() {
         _task = task;
+        _board = board;
         _isLoading = false;
       });
     } catch (e) {
+      if (!mounted) return;
+
       setState(() {
         _isLoading = false;
+        _error = e.toString();
       });
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to load task details: $e')),
-        );
-      }
     }
   }
 
@@ -60,149 +71,182 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       appBar: AppBar(
         backgroundColor: AppColors.backgroundColor,
         elevation: 0,
-        title: _isLoading ? const Text('Task Details') : Text(_task.title),
+        title:
+            Text(_isLoading ? 'Task Details' : _task?.title ?? 'Task Details'),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.more_vert),
-            onPressed: () {
-              // Show task options
-              if (!_isLoading) {
-                _showTaskOptions();
-              }
-            },
-          ),
+          if (!_isLoading && _task != null)
+            IconButton(
+              icon: const Icon(Icons.more_vert),
+              onPressed: _showTaskOptions,
+            ),
         ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Task Status
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: _getStatusColor(_task.status),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      _task.status,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
+      body: _buildBody(),
+    );
+  }
 
-                  const SizedBox(height: 16),
+  Widget _buildBody() {
+    if (_isLoading) {
+      return const Center(
+        child: CircularProgressIndicator(),
+      );
+    }
 
-                  // Task Title
-                  Text(
-                    _task.title,
-                    style: const TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.textColor,
-                    ),
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // Task Description
-                  const Text(
-                    'Description',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.textColor,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    _task.description,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      color: AppColors.secondaryTextColor,
-                    ),
-                  ),
-
-                  const SizedBox(height: 24),
-
-                  // Task Details
-                  const Text(
-                    'Details',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.textColor,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  _buildDetailItem(
-                    'Deadline',
-                    _task.deadline != null
-                        ? DateFormat('MMM d, yyyy').format(_task.deadline!)
-                        : 'None',
-                    Icons.calendar_today,
-                  ),
-                  const SizedBox(height: 8),
-                  _buildDetailItem(
-                    'Status',
-                    _task.status,
-                    Icons.info_outline,
-                  ),
-                  const SizedBox(height: 8),
-                  _buildDetailItem(
-                    'Project',
-                    'Project ${_task.boardId}',
-                    Icons.folder_outlined,
-                  ),
-
-                  const SizedBox(height: 24),
-
-                  // Task Actions
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      _buildActionButton(
-                        'Edit',
-                        Icons.edit,
-                        () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => CreateTaskScreen(
-                                projectId: _task.boardId,
-                                taskId: _task.id,
-                              ),
-                            ),
-                          ).then((_) => _loadTaskDetails());
-                        },
-                      ),
-                      _buildActionButton(
-                        _task.isCompleted ? 'Mark Incomplete' : 'Mark Complete',
-                        _task.isCompleted ? Icons.close : Icons.check,
-                        () {
-                          _updateTaskStatus(!_task.isCompleted);
-                        },
-                      ),
-                      _buildActionButton(
-                        'Delete',
-                        Icons.delete,
-                        () {
-                          _confirmDeleteTask();
-                        },
-                        color: Colors.red,
-                      ),
-                    ],
-                  ),
-                ],
+    if (_error != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(
+                Icons.error_outline,
+                color: Colors.red,
+                size: 48,
               ),
-            ),
+              const SizedBox(height: 16),
+              const Text(
+                'Failed to load task details',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                _error!,
+                style: const TextStyle(
+                  color: Colors.white70,
+                  fontSize: 14,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: _loadTaskDetails,
+                child: const Text('Retry'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (_task == null) {
+      return const Center(
+        child: Text(
+          'Task not found',
+          style: TextStyle(color: Colors.white),
+        ),
+      );
+    }
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildStatusBadge(),
+          const SizedBox(height: 16),
+          _buildTaskTitle(),
+          const SizedBox(height: 16),
+          _buildDescription(),
+          const SizedBox(height: 24),
+          _buildDetails(),
+          const SizedBox(height: 24),
+          _buildActions(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatusBadge() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: _getStatusColor(_task!.status),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        _task!.status,
+        style: const TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.bold,
+          color: Colors.white,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTaskTitle() {
+    return Text(
+      _task!.title,
+      style: const TextStyle(
+        fontSize: 24,
+        fontWeight: FontWeight.bold,
+        color: AppColors.textColor,
+      ),
+    );
+  }
+
+  Widget _buildDescription() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Description',
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: AppColors.textColor,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          _task!.description,
+          style: const TextStyle(
+            fontSize: 16,
+            color: AppColors.secondaryTextColor,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDetails() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Details',
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: AppColors.textColor,
+          ),
+        ),
+        const SizedBox(height: 8),
+        _buildDetailItem(
+          'Deadline',
+          _task!.deadline != null
+              ? DateFormat('MMM d, yyyy').format(_task!.deadline!)
+              : 'None',
+          Icons.calendar_today,
+        ),
+        const SizedBox(height: 8),
+        _buildDetailItem(
+          'Status',
+          _task!.status,
+          Icons.info_outline,
+        ),
+        const SizedBox(height: 8),
+        _buildDetailItem(
+          'Board',
+          _board?.title ?? 'Loading...',
+          Icons.folder_outlined,
+        ),
+      ],
     );
   }
 
@@ -242,6 +286,55 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     );
   }
 
+  Widget _buildActions() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: [
+          Expanded(
+            child: _buildActionButton(
+              'Edit',
+              Icons.edit,
+              () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => CreateTaskScreen(
+                      projectId: _task!.boardId,
+                      boardId: _task!.boardId,
+                      taskId: _task!.id,
+                    ),
+                  ),
+                ).then((_) => _loadTaskDetails());
+              },
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: _buildActionButton(
+              _task!.isCompleted ? 'Mark Incomplete' : 'Mark Complete',
+              _task!.isCompleted ? Icons.close : Icons.check,
+              () {
+                _updateTaskStatus(!_task!.isCompleted);
+              },
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: _buildActionButton(
+              'Delete',
+              Icons.delete,
+              _confirmDeleteTask,
+              color: Colors.red,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildActionButton(String label, IconData icon, VoidCallback onPressed,
       {Color? color}) {
     return ElevatedButton.icon(
@@ -252,7 +345,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
         backgroundColor:
             color != null ? Colors.transparent : AppColors.primaryColor,
         foregroundColor: color ?? Colors.white,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
         side: color != null ? BorderSide(color: color) : null,
       ),
     );
@@ -273,7 +366,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
 
   void _updateTaskStatus(bool isCompleted) async {
     try {
-      await _taskService.updateTaskStatus(_task.id, isCompleted);
+      await _taskService.updateTaskStatus(_task!.id, isCompleted);
       _loadTaskDetails();
     } catch (e) {
       if (mounted) {
@@ -307,8 +400,9 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                     context,
                     MaterialPageRoute(
                       builder: (context) => CreateTaskScreen(
-                        projectId: _task.boardId,
-                        taskId: _task.id,
+                        projectId: _task!.boardId,
+                        boardId: _task!.boardId,
+                        taskId: _task!.id,
                       ),
                     ),
                   ).then((_) => _loadTaskDetails());
@@ -316,16 +410,18 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
               ),
               ListTile(
                 leading: Icon(
-                  _task.isCompleted ? Icons.close : Icons.check,
+                  _task!.isCompleted ? Icons.close : Icons.check,
                   color: AppColors.primaryColor,
                 ),
                 title: Text(
-                  _task.isCompleted ? 'Mark as Incomplete' : 'Mark as Complete',
+                  _task!.isCompleted
+                      ? 'Mark as Incomplete'
+                      : 'Mark as Complete',
                   style: const TextStyle(color: AppColors.textColor),
                 ),
                 onTap: () {
                   Navigator.pop(context);
-                  _updateTaskStatus(!_task.isCompleted);
+                  _updateTaskStatus(!_task!.isCompleted);
                 },
               ),
               ListTile(
@@ -347,45 +443,42 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
   void _confirmDeleteTask() {
     showDialog(
       context: context,
-      builder: (context) {
-        return AlertDialog(
-          backgroundColor: AppColors.cardColor,
-          title: const Text('Delete Task',
-              style: TextStyle(color: AppColors.textColor)),
-          content: Text(
-            'Are you sure you want to delete "${_task.title}"? This action cannot be undone.',
-            style: const TextStyle(color: AppColors.textColor),
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.cardColor,
+        title: const Text('Delete Task',
+            style: TextStyle(color: AppColors.textColor)),
+        content: Text(
+          'Are you sure you want to delete "${_task!.title}"? This action cannot be undone.',
+          style: const TextStyle(color: AppColors.textColor),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-            TextButton(
-              onPressed: () async {
-                Navigator.pop(context);
-                try {
-                  final success = await _taskService.deleteTask(_task.id);
-                  if (success && mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                          content: Text('Task deleted successfully')),
-                    );
-                    Navigator.pop(context); // Return to previous screen
-                  }
-                } catch (e) {
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Failed to delete task: $e')),
-                    );
-                  }
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              try {
+                final success = await _taskService.deleteTask(_task!.id);
+                if (success && mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Task deleted successfully')),
+                  );
+                  Navigator.pop(context);
                 }
-              },
-              child: const Text('Delete', style: TextStyle(color: Colors.red)),
-            ),
-          ],
-        );
-      },
+              } catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Failed to delete task: $e')),
+                  );
+                }
+              }
+            },
+            child: const Text('Delete', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
     );
   }
 }

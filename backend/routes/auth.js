@@ -8,13 +8,21 @@ const router = express.Router();
 //Register
 router.post('/register', async (req, res) => {
     try{
-        const {name, email, password} = req.body;
-        console.log("Register request received with data:", {name, email});
+        const {name, email, password, dateOfBirth, country, phoneNumber, profilePicture} = req.body;
+        console.log("Register request received with data:", {name, email, dateOfBirth, country, phoneNumber, profilePicture});
 
         const hashedPassword = await bcrypt.hash(password, 10);
-        const newUser = new User({name, email, password: hashedPassword});
+        const newUser = new User({
+            name, 
+            email, 
+            password: hashedPassword,
+            dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : undefined,
+            country,
+            phoneNumber,
+            profilePicture
+        });
         await newUser.save();
-        res.status(201).json({ message: "User registerd successfully"});
+        res.status(201).json({ message: "User registered successfully"});
     } catch(error){
         console.error("Error during registration:", error);
         res.status(500).json({ error: 'Error registering user', details: error.message});
@@ -44,7 +52,7 @@ router.post('/login', async (req, res) => {
     }
 
     // Generate JWT token
-    const token = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET, { expiresIn: '1h' });
+    const token = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET, { expiresIn: '1d' });
     console.log('Token generated:', token);
 
     res.json({ token });

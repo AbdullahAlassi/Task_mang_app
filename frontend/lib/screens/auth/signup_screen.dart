@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'dart:io';
+import 'package:image_picker/image_picker.dart';
+import 'package:intl/intl.dart';
 import 'package:frontend/screens/auth/login_screen.dart';
 import 'package:frontend/screens/dashboard/dashboard_screen.dart';
 import 'package:frontend/services/auth_service.dart';
@@ -18,11 +21,16 @@ class _SignupScreenState extends State<SignupScreen> {
   final _usernameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _countryController = TextEditingController();
+  final _phoneNumberController = TextEditingController();
   bool _isPasswordVisible = false;
   bool _rememberMe = false;
   bool _isLoading = false;
+  DateTime? _selectedDate;
+  String? _profileImagePath;
 
   final _authService = AuthService();
+  final _imagePicker = ImagePicker();
 
   @override
   void initState() {
@@ -40,6 +48,8 @@ class _SignupScreenState extends State<SignupScreen> {
     _usernameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
+    _countryController.dispose();
+    _phoneNumberController.dispose();
     super.dispose();
   }
 
@@ -52,12 +62,16 @@ class _SignupScreenState extends State<SignupScreen> {
           name: _usernameController.text,
           email: _emailController.text,
           password: _passwordController.text,
+          dateOfBirth: _selectedDate,
+          country: _countryController.text,
+          phoneNumber: _phoneNumberController.text,
+          profilePicture: _profileImagePath,
         );
 
         if (mounted) {
           Navigator.pushReplacement(
             context,
-            MaterialPageRoute(builder: (context) => const DashboardScreen()),
+            MaterialPageRoute(builder: (context) => const LoginScreen()),
           );
         }
       } catch (e) {
@@ -71,6 +85,30 @@ class _SignupScreenState extends State<SignupScreen> {
           setState(() => _isLoading = false);
         }
       }
+    }
+  }
+
+  Future<void> _pickImage() async {
+    final XFile? image =
+        await _imagePicker.pickImage(source: ImageSource.gallery);
+    if (image != null) {
+      setState(() {
+        _profileImagePath = image.path;
+      });
+    }
+  }
+
+  Future<void> _selectDate(BuildContext context) async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate ?? DateTime.now(),
+      firstDate: DateTime(1900),
+      lastDate: DateTime.now(),
+    );
+    if (picked != null && picked != _selectedDate) {
+      setState(() {
+        _selectedDate = picked;
+      });
     }
   }
 
@@ -103,6 +141,8 @@ class _SignupScreenState extends State<SignupScreen> {
                   const SizedBox(height: 30),
                   _buildAuthToggle(),
                   const SizedBox(height: 30),
+                  _buildProfileImage(),
+                  const SizedBox(height: 30),
                   _buildInputFields(isSmallScreen),
                   const SizedBox(height: 15),
                   _buildRememberMe(),
@@ -118,6 +158,28 @@ class _SignupScreenState extends State<SignupScreen> {
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildProfileImage() {
+    return Center(
+      child: GestureDetector(
+        onTap: _pickImage,
+        child: CircleAvatar(
+          radius: 50,
+          backgroundColor: const Color(0xFF2C2C2E),
+          backgroundImage: _profileImagePath != null
+              ? FileImage(File(_profileImagePath!)) as ImageProvider
+              : null,
+          child: _profileImagePath == null
+              ? const Icon(
+                  Icons.person_outline,
+                  size: 50,
+                  color: Colors.white,
+                )
+              : null,
         ),
       ),
     );
@@ -232,7 +294,7 @@ class _SignupScreenState extends State<SignupScreen> {
         const SizedBox(height: 15),
         Container(
           decoration: BoxDecoration(
-            color: const Color(0xFF2C2C2E),
+            color: const Color.fromARGB(31, 55, 56, 80),
             borderRadius: BorderRadius.circular(12),
           ),
           padding: EdgeInsets.symmetric(
@@ -241,9 +303,9 @@ class _SignupScreenState extends State<SignupScreen> {
           ),
           child: Row(
             children: [
-              Icon(
+              const Icon(
                 Icons.lock_outline,
-                color: const Color(0xFF8E8E93),
+                color: Color(0xFF8E8E93),
                 size: 20,
               ),
               const SizedBox(width: 10),
@@ -287,6 +349,53 @@ class _SignupScreenState extends State<SignupScreen> {
                 ),
               ),
             ],
+          ),
+        ),
+        const SizedBox(height: 15),
+        CustomTextField(
+          hintText: 'Country',
+          prefixIcon: Icons.location_on_outlined,
+          controller: _countryController,
+        ),
+        const SizedBox(height: 15),
+        CustomTextField(
+          hintText: 'Phone Number',
+          prefixIcon: Icons.phone_outlined,
+          keyboardType: TextInputType.phone,
+          controller: _phoneNumberController,
+        ),
+        const SizedBox(height: 15),
+        GestureDetector(
+          onTap: () => _selectDate(context),
+          child: Container(
+            decoration: BoxDecoration(
+              color: const Color.fromARGB(31, 55, 56, 80),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            padding: EdgeInsets.symmetric(
+              horizontal: 15,
+              vertical: isSmallScreen ? 12 : 15,
+            ),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.calendar_today_outlined,
+                  color: Color(0xFF8E8E93),
+                  size: 20,
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  _selectedDate != null
+                      ? DateFormat('MMM d, yyyy').format(_selectedDate!)
+                      : 'Date of Birth',
+                  style: const TextStyle(
+                    color: Color(0xFF8E8E93),
+                    fontSize: 16,
+                    fontFamily: 'Inter',
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ],

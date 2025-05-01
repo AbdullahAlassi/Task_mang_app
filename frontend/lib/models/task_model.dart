@@ -25,6 +25,10 @@ class Task {
   });
 
   factory Task.fromJson(Map<String, dynamic> json) {
+    // Handle nested board object
+    final board = json['board'];
+    final boardId = board is Map ? board['_id'] : board;
+
     return Task(
       id: json['_id'] ?? json['id'],
       title: json['title'],
@@ -33,9 +37,13 @@ class Task {
       deadline:
           json['deadline'] != null ? DateTime.parse(json['deadline']) : null,
       isCompleted: json['status'] == 'Done',
-      boardId: json['board'],
+      boardId: boardId,
       assignedTo: json['assignedTo'] != null
-          ? List<String>.from(json['assignedTo'])
+          ? (json['assignedTo'] as List)
+              .map((a) => a is String ? a : a['_id'] ?? a['id'] ?? '')
+              .where((id) => id.isNotEmpty)
+              .cast<String>()
+              .toList()
           : [],
       color: json['color'] != null
           ? Color(int.parse(json['color'], radix: 16))
@@ -52,7 +60,7 @@ class Task {
       'deadline': deadline?.toIso8601String(),
       'board': boardId,
       'assignedTo': assignedTo,
-      'color': color != null ? color!.value.toRadixString(16) : null,
+      'color': color?.value.toRadixString(16),
     };
   }
 

@@ -162,7 +162,7 @@ router.post(
       }
 
       const token = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET, {
-        expiresIn: '1h',
+        expiresIn: '1d',
       });
 
       res.json({ token });
@@ -171,6 +171,21 @@ router.post(
     }
   }
 );
+
+// Get users by their IDs
+router.post('/by-ids', authMiddleware, async (req, res) => {
+  try {
+    const { userIds } = req.body;
+    if (!userIds || !Array.isArray(userIds)) {
+      return res.status(400).json({ error: 'Invalid user IDs provided' });
+    }
+
+    const users = await User.find({ _id: { $in: userIds } }).select('-password');
+    res.status(200).json(users);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 
 module.exports = router;
 

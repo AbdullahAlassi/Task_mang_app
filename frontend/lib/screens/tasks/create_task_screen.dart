@@ -1,15 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import '../../../config/app_colors.dart';
-import '../../../services/task_service.dart';
+import '../../config/app_colors.dart';
+import '../../models/task_model.dart';
+import '../../models/user_model.dart';
+import '../../services/task_service.dart';
+import '../../services/project_service.dart';
+import '../../services/user_service.dart';
 
 class CreateTaskScreen extends StatefulWidget {
   final String projectId;
+  final String boardId;
   final String? taskId; // If provided, we're editing an existing task
 
   const CreateTaskScreen({
     Key? key,
     required this.projectId,
+    required this.boardId,
     this.taskId,
   }) : super(key: key);
 
@@ -21,27 +27,83 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
   final _formKey = GlobalKey<FormState>();
   final _titleController = TextEditingController();
   final _descriptionController = TextEditingController();
+  final _taskService = TaskService();
+  final _projectService = ProjectService();
+  final _userService = UserService();
 
-  DateTime? _deadline;
-  String _status = 'To Do';
+  DateTime? _dueDate;
+  List<String> _assignedTo = [];
   bool _isLoading = false;
+  String _priority = 'Medium';
+  Color _selectedColor = Colors.blue;
+  List<User> _projectMembers = [];
+  List<User> _filteredMembers = [];
+  final _searchController = TextEditingController();
 
-  final TaskService _taskService = TaskService();
+  // Priority options
+  final List<String> _priorities = [
+    'Low',
+    'Medium',
+    'High',
+    'Urgent',
+  ];
 
-  final List<String> _statusOptions = [
-    'To Do',
-    'In Progress',
-    'Done',
+  // Color options
+  final List<Color> _colors = [
+    Colors.blue,
+    Colors.green,
+    Colors.orange,
+    Colors.purple,
+    Colors.red,
+    Colors.teal,
   ];
 
   @override
   void initState() {
     super.initState();
-
-    // If editing an existing task, load its details
     if (widget.taskId != null) {
       _loadTaskDetails();
     }
+    _loadProjectMembers();
+  }
+
+  Future<void> _loadProjectMembers() async {
+    try {
+      setState(() => _isLoading = true);
+
+      // First get the project details to get the member IDs
+      final project = await _projectService.getProjectDetails(widget.projectId);
+
+      // Only fetch users that are members of this project
+      final members = await _userService.getUsersByIds(project.memberIds);
+
+      setState(() {
+        _projectMembers = members;
+        _filteredMembers = members;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() => _isLoading = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to load project members: $e')),
+        );
+      }
+    }
+  }
+
+  void _onSearchChanged(String query) {
+    setState(() {
+      if (query.isEmpty) {
+        _filteredMembers = _projectMembers;
+      } else {
+        _filteredMembers = _projectMembers.where((user) {
+          final lowercaseQuery = query.toLowerCase();
+          return user.name.toLowerCase().contains(lowercaseQuery) ||
+              user.email.toLowerCase().contains(lowercaseQuery);
+        }).toList();
+      }
+    });
   }
 
   Future<void> _loadTaskDetails() async {
@@ -51,19 +113,19 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
 
     try {
       final task = await _taskService.getTaskDetails(widget.taskId!);
-
       setState(() {
         _titleController.text = task.title;
         _descriptionController.text = task.description;
-        _deadline = task.deadline;
-        _status = task.status;
+        _dueDate = task.deadline;
+        _assignedTo = task.assignedTo;
+        _priority = task.getPriority();
+        _selectedColor = task.color ?? Colors.blue;
         _isLoading = false;
       });
     } catch (e) {
       setState(() {
         _isLoading = false;
       });
-
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Failed to load task details: $e')),
@@ -72,17 +134,10 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
     }
   }
 
-  @override
-  void dispose() {
-    _titleController.dispose();
-    _descriptionController.dispose();
-    super.dispose();
-  }
-
   Future<void> _selectDate(BuildContext context) async {
     final DateTime? picked = await showDatePicker(
       context: context,
-      initialDate: _deadline ?? DateTime.now().add(const Duration(days: 7)),
+      initialDate: _dueDate ?? DateTime.now().add(const Duration(days: 7)),
       firstDate: DateTime.now(),
       lastDate: DateTime.now().add(const Duration(days: 365)),
       builder: (context, child) {
@@ -94,16 +149,16 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
               surface: AppColors.cardColor,
               onSurface: AppColors.textColor,
             ),
-            dialogBackgroundColor: AppColors.cardColor,
+            dialogTheme: DialogThemeData(backgroundColor: AppColors.cardColor),
           ),
           child: child!,
         );
       },
     );
 
-    if (picked != null && picked != _deadline) {
+    if (picked != null && picked != _dueDate) {
       setState(() {
-        _deadline = picked;
+        _dueDate = picked;
       });
     }
   }
@@ -118,9 +173,12 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
         final taskData = {
           'title': _titleController.text,
           'description': _descriptionController.text,
-          'status': _status,
-          'deadline': _deadline?.toIso8601String(),
-          'board': widget.projectId, // In our API, board refers to the project
+          'deadline': _dueDate?.toIso8601String(),
+          'assignedTo': _assignedTo,
+          'priority': _priority,
+          'color': _selectedColor.value.toString(),
+          'board': widget.boardId,
+          'projectId': widget.projectId,
         };
 
         if (widget.taskId != null) {
@@ -142,7 +200,7 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
         }
 
         if (mounted) {
-          Navigator.pop(context);
+          Navigator.pop(context, true); // Return true to indicate success
         }
       } catch (e) {
         if (mounted) {
@@ -207,7 +265,6 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                         return null;
                       },
                     ),
-
                     const SizedBox(height: 24),
 
                     // Description Field
@@ -234,12 +291,11 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                       ),
                       maxLines: 3,
                     ),
-
                     const SizedBox(height: 24),
 
-                    // Deadline Field
+                    // Due Date Field
                     const Text(
-                      'Deadline (Optional)',
+                      'Due Date (Optional)',
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
@@ -260,11 +316,11 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Text(
-                              _deadline != null
-                                  ? DateFormat('MMM d, yyyy').format(_deadline!)
-                                  : 'Select a deadline',
+                              _dueDate != null
+                                  ? DateFormat('MMM d, yyyy').format(_dueDate!)
+                                  : 'Select a due date',
                               style: TextStyle(
-                                color: _deadline != null
+                                color: _dueDate != null
                                     ? AppColors.textColor
                                     : AppColors.secondaryTextColor,
                               ),
@@ -275,12 +331,11 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                         ),
                       ),
                     ),
-
                     const SizedBox(height: 24),
 
-                    // Status Field
+                    // Priority Field
                     const Text(
-                      'Status',
+                      'Priority',
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
@@ -296,28 +351,202 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                       ),
                       child: DropdownButtonHideUnderline(
                         child: DropdownButton<String>(
-                          value: _status,
+                          value: _priority,
                           isExpanded: true,
                           dropdownColor: AppColors.cardColor,
                           style: const TextStyle(color: AppColors.textColor),
                           icon: const Icon(Icons.arrow_drop_down,
                               color: AppColors.primaryColor),
-                          items: _statusOptions.map((String status) {
+                          items: _priorities.map((String priority) {
                             return DropdownMenuItem<String>(
-                              value: status,
-                              child: Text(status),
+                              value: priority,
+                              child: Text(priority),
                             );
                           }).toList(),
                           onChanged: (String? newValue) {
                             if (newValue != null) {
                               setState(() {
-                                _status = newValue;
+                                _priority = newValue;
                               });
                             }
                           },
                         ),
                       ),
                     ),
+                    const SizedBox(height: 24),
+
+                    // Color Selection
+                    const Text(
+                      'Color',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.textColor,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      height: 50,
+                      child: ListView.builder(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: _colors.length,
+                        itemBuilder: (context, index) {
+                          return GestureDetector(
+                            onTap: () {
+                              setState(() {
+                                _selectedColor = _colors[index];
+                              });
+                            },
+                            child: Container(
+                              width: 40,
+                              height: 40,
+                              margin: const EdgeInsets.only(right: 8),
+                              decoration: BoxDecoration(
+                                color: _colors[index],
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: _selectedColor == _colors[index]
+                                      ? Colors.white
+                                      : Colors.transparent,
+                                  width: 2,
+                                ),
+                              ),
+                              child: _selectedColor == _colors[index]
+                                  ? const Icon(Icons.check, color: Colors.white)
+                                  : null,
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+
+                    // Member Selection Section
+                    const Text(
+                      'Assign Members',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.textColor,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+
+                    // Search Bar for Members
+                    TextFormField(
+                      controller: _searchController,
+                      style: const TextStyle(color: AppColors.textColor),
+                      decoration: InputDecoration(
+                        hintText: 'Search project members',
+                        filled: true,
+                        fillColor: AppColors.cardColor,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none,
+                        ),
+                        prefixIcon: const Icon(Icons.search,
+                            color: AppColors.primaryColor),
+                        suffixIcon: _searchController.text.isNotEmpty
+                            ? IconButton(
+                                icon: const Icon(Icons.clear,
+                                    color: AppColors.primaryColor),
+                                onPressed: () {
+                                  _searchController.clear();
+                                  _onSearchChanged('');
+                                },
+                              )
+                            : null,
+                      ),
+                      onChanged: _onSearchChanged,
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Selected Members
+                    if (_assignedTo.isNotEmpty) ...[
+                      const Text(
+                        'Selected Members',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.textColor,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      ..._projectMembers
+                          .where((user) => _assignedTo.contains(user.id))
+                          .map((user) => ListTile(
+                                leading: const Icon(Icons.person,
+                                    color: AppColors.primaryColor),
+                                title: Text(user.name),
+                                subtitle: Text(user.email),
+                                trailing: IconButton(
+                                  icon: const Icon(Icons.remove_circle_outline,
+                                      color: Colors.red),
+                                  onPressed: () {
+                                    setState(() {
+                                      _assignedTo.remove(user.id);
+                                    });
+                                  },
+                                ),
+                              )),
+                      const SizedBox(height: 16),
+                    ],
+
+                    // Available Members
+                    const Text(
+                      'Available Members',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.textColor,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    _filteredMembers.isEmpty
+                        ? const Center(
+                            child: Padding(
+                              padding: EdgeInsets.all(16.0),
+                              child: Text(
+                                'No project members found',
+                                style: TextStyle(
+                                    color: AppColors.secondaryTextColor),
+                              ),
+                            ),
+                          )
+                        : ListView.builder(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            itemCount: _filteredMembers.length,
+                            itemBuilder: (context, index) {
+                              final user = _filteredMembers[index];
+                              final isSelected = _assignedTo.contains(user.id);
+                              return ListTile(
+                                leading: const Icon(Icons.person_outline,
+                                    color: AppColors.primaryColor),
+                                title: Text(user.name),
+                                subtitle: Text(user.email),
+                                trailing: IconButton(
+                                  icon: Icon(
+                                    isSelected
+                                        ? Icons.check_circle
+                                        : Icons.add_circle_outline,
+                                    color: isSelected
+                                        ? Colors.green
+                                        : AppColors.primaryColor,
+                                  ),
+                                  onPressed: () {
+                                    setState(() {
+                                      if (isSelected) {
+                                        _assignedTo.remove(user.id);
+                                      } else {
+                                        _assignedTo.add(user.id);
+                                      }
+                                    });
+                                  },
+                                ),
+                              );
+                            },
+                          ),
 
                     const SizedBox(height: 40),
 
@@ -354,5 +583,13 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
               ),
             ),
     );
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _descriptionController.dispose();
+    _searchController.dispose();
+    super.dispose();
   }
 }

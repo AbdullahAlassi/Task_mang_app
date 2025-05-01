@@ -34,7 +34,6 @@ class AppTheme {
     colorScheme: const ColorScheme.dark(
       primary: AppColors.primaryColor,
       secondary: AppColors.primaryColor,
-      background: AppColors.backgroundColor,
       surface: AppColors.cardColor,
     ),
     appBarTheme: const AppBarTheme(
@@ -73,8 +72,8 @@ class AppTheme {
       ),
     ),
     checkboxTheme: CheckboxThemeData(
-      fillColor: MaterialStateProperty.resolveWith<Color>((states) {
-        if (states.contains(MaterialState.selected)) {
+      fillColor: WidgetStateProperty.resolveWith<Color>((states) {
+        if (states.contains(WidgetState.selected)) {
           return AppColors.primaryColor;
         }
         return Colors.transparent;

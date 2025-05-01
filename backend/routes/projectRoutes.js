@@ -5,6 +5,9 @@ const authMiddleware = require('../middleware/auth');
 const roleMiddleware = require('../middleware/roleMiddleware');
 const Notification = require('../models/notificationModel');
 const { validateRequest, createProjectSchema } = require('../validators/validationSchemas');
+const Task = require('../models/taskModel'); 
+const Board = require('../models/boardModel');
+
 
 // List of predefined colors for projects
 const projectColors = [
@@ -14,6 +17,43 @@ const projectColors = [
   '#808C44', // Olive green
   '#35383F', // Dark gray
 ];
+
+// Get all tasks for a project (Manager and Members allowed)
+router.get('/:id/tasks', authMiddleware, async (req, res) => {
+  try {
+    const projectId = req.params.id;
+    const userId = req.user.id;
+
+    const project = await Project.findById(projectId);
+
+    if (!project) {
+      return res.status(404).json({ message: 'Project not found' });
+    }
+
+    // Authorization check: manager or member
+    const isManager = project.manager.toString() === userId;
+    const isMember = project.members.map(m => m.toString()).includes(userId);
+
+    if (!isManager && !isMember) {
+      return res.status(403).json({ message: 'Access denied: Not a member or manager of this project.' });
+    }
+
+    // Find all boards for this project
+    const boards = await Board.find({ project: projectId });
+    
+    // Find all tasks in those boards
+    const boardIds = boards.map(board => board._id);
+    const tasks = await Task.find({ board: { $in: boardIds } })
+      .populate('board')
+      .populate('assignedTo', 'name email');
+
+    res.status(200).json(tasks);
+  } catch (error) {
+    console.error('Error fetching project tasks:', error);
+    res.status(500).json({ message: 'Error fetching tasks', error: error.message });
+  }
+});
+
 
 // Get all projects or recent projects
 router.get('/', authMiddleware, async (req, res) => {
@@ -66,21 +106,29 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// Update project
-router.put('/:id', async (req, res) => {
+// Update project (only manager can update)
+router.put('/:id', authMiddleware, async (req, res) => {
   try {
-    const updatedProject = await Project.findByIdAndUpdate(req.params.id, req.body, {
-      new: true,
-    });
+    const project = await Project.findById(req.params.id);
+    if (!project) return res.status(404).json({ message: 'Project not found' });
+    if (project.manager.toString() !== req.user.id) {
+      return res.status(403).json({ message: 'Only the project manager can edit the project.' });
+    }
+    const updatedProject = await Project.findByIdAndUpdate(req.params.id, req.body, { new: true });
     res.status(200).json(updatedProject);
   } catch (error) {
     res.status(400).json({ error: error.message });
   }
 });
 
-// Delete project
-router.delete('/:id', async (req, res) => {
+// Delete project (only manager can delete)
+router.delete('/:id', authMiddleware, async (req, res) => {
   try {
+    const project = await Project.findById(req.params.id);
+    if (!project) return res.status(404).json({ message: 'Project not found' });
+    if (project.manager.toString() !== req.user.id) {
+      return res.status(403).json({ message: 'Only the project manager can delete the project.' });
+    }
     await Project.findByIdAndDelete(req.params.id);
     res.status(200).json({ message: 'Project deleted' });
   } catch (error) {

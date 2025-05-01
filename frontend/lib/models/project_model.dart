@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../config/app_colors.dart';
 
 class Project {
   final String id;
@@ -32,14 +31,70 @@ class Project {
     required this.color,
   });
 
+  // Get the status based on progress
+  String getStatusBasedOnProgress() {
+    if (progress >= 100) {
+      return 'Completed';
+    } else if (progress > 0) {
+      return 'In Progress';
+    } else {
+      return 'To Do';
+    }
+  }
+
   factory Project.fromJson(Map<String, dynamic> json) {
     // Calculate progress if not provided
-    int progress = json['progress'] ?? 0;
-    int totalTasks = json['totalTasks'] ?? 0;
-    int completedTasks = json['completedTasks'] ?? 0;
+    int progress = json['progress'] is int ? json['progress'] : 0;
+    int totalTasks = json['totalTasks'] is int ? json['totalTasks'] : 0;
+    int completedTasks =
+        json['completedTasks'] is int ? json['completedTasks'] : 0;
 
     if (progress == 0 && totalTasks > 0) {
       progress = ((completedTasks / totalTasks) * 100).round();
+    }
+
+    // Get status based on progress
+    String status = json['status'] ?? 'To Do';
+    if (progress >= 100) {
+      status = 'Completed';
+    } else if (progress > 0) {
+      status = 'In Progress';
+    } else {
+      status = 'To Do';
+    }
+
+    // Handle boards field
+    List<String> boardIds = [];
+    if (json['boards'] != null && json['boards'] is List) {
+      boardIds = (json['boards'] as List)
+          .map((b) {
+            if (b is String) {
+              return b;
+            } else if (b is Map) {
+              return b['_id'] ?? b['id'] ?? '';
+            }
+            return '';
+          })
+          .where((id) => id.isNotEmpty)
+          .cast<String>()
+          .toList();
+    }
+
+    // Handle members field
+    List<String> memberIds = [];
+    if (json['members'] != null && json['members'] is List) {
+      memberIds = (json['members'] as List)
+          .map((m) {
+            if (m is String) {
+              return m;
+            } else if (m is Map) {
+              return m['_id'] ?? m['id'] ?? '';
+            }
+            return '';
+          })
+          .where((id) => id.isNotEmpty)
+          .cast<String>()
+          .toList();
     }
 
     return Project(
@@ -51,17 +106,15 @@ class Project {
           : DateTime.now(),
       deadline:
           json['deadline'] != null ? DateTime.parse(json['deadline']) : null,
-      status: json['status'] ?? 'Not Started',
+      status: status,
       progress: progress,
       totalTasks: totalTasks,
       completedTasks: completedTasks,
-      managerId: json['manager']?['_id'] ?? json['manager'],
-      memberIds: json['members'] != null
-          ? List<String>.from(json['members'].map((m) => m['_id'] ?? m))
-          : [],
-      boardIds: json['boards'] != null
-          ? List<String>.from(json['boards'].map((b) => b['_id'] ?? b))
-          : [],
+      managerId: json['manager'] is String
+          ? json['manager']
+          : (json['manager']?['_id'] ?? json['manager']),
+      memberIds: memberIds,
+      boardIds: boardIds,
       color: json['color'] ?? '#6B4EFF',
     );
   }
@@ -71,7 +124,7 @@ class Project {
       'title': title,
       'description': description,
       'deadline': deadline?.toIso8601String(),
-      'status': status,
+      'status': getStatusBasedOnProgress(), // Use the calculated status
       'progress': progress,
       'totalTasks': totalTasks,
       'completedTasks': completedTasks,

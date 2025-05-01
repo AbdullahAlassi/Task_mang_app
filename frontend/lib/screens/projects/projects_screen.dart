@@ -1,16 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:frontend/screens/profile/profile_screen.dart';
 import 'package:intl/intl.dart';
-import 'package:provider/provider.dart';
 import '../../../config/app_colors.dart';
 import '../../../models/project_model.dart';
 import '../../../models/project_status.dart';
-import '../../../providers/whiteboard_provider.dart';
 import '../../../services/project_service.dart';
 import '../../../widgets/bottom_navigation.dart';
-import '../../../widgets/project_card.dart';
 import 'project_detail_screen.dart';
 import 'create_project_screen.dart';
-import 'whiteboard_screen.dart';
+import 'kanban_board_screen.dart';
 
 class ProjectsScreen extends StatefulWidget {
   const ProjectsScreen({Key? key}) : super(key: key);
@@ -155,7 +153,12 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
                           icon: const Icon(Icons.person,
                               color: AppColors.primaryColor),
                           onPressed: () {
-                            // Navigate to profile
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => const ProfileScreen(),
+                              ),
+                            );
                           },
                         ),
                       ),
@@ -279,19 +282,136 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
   }
 
   Widget _buildProjectCard(Project project) {
+    final progress = project.progress / 100;
+    final completedTasks = project.completedTasks;
+    final totalTasks = project.totalTasks;
+    final bannerColor = project.getBannerColor();
+
     return GestureDetector(
       onTap: () {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => ChangeNotifierProvider(
-              create: (_) => WhiteboardProvider(),
-              child: WhiteboardScreen(projectId: project.id),
-            ),
+            builder: (context) => KanbanBoardScreen(projectId: project.id),
           ),
         );
       },
-      child: ProjectCard(project: project),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 16, left: 8, right: 8),
+        decoration: BoxDecoration(
+          color: AppColors.cardColor,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Project banner
+            Container(
+              height: 150,
+              decoration: BoxDecoration(
+                color: bannerColor,
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(16),
+                  topRight: Radius.circular(16),
+                ),
+              ),
+              child: Stack(
+                children: [
+                  Positioned(
+                    top: 12,
+                    right: 12,
+                    child: Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        shape: BoxShape.circle,
+                      ),
+                      child: IconButton(
+                        icon: const Icon(Icons.more_horiz,
+                            color: Colors.white, size: 20),
+                        onPressed: () {
+                          _showProjectOptions(project);
+                        },
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // Project details
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  // Project title and date
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          project.title,
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.textColor,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '${project.completedTasks}/${project.totalTasks} tasks',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            color: AppColors.secondaryTextColor,
+                          ),
+                        ),
+                        Text(
+                          project.deadline != null
+                              ? 'Due: ${DateFormat('MMM d, yyyy').format(project.deadline!)}'
+                              : 'No deadline',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            color: AppColors.secondaryTextColor,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // Progress indicators
+                  SizedBox(
+                    width: 40,
+                    height: 40,
+                    child: Stack(
+                      children: [
+                        CircularProgressIndicator(
+                          value: progress,
+                          backgroundColor: AppColors.secondaryCardColor,
+                          valueColor:
+                              AlwaysStoppedAnimation<Color>(bannerColor),
+                          strokeWidth: 5,
+                        ),
+                        Center(
+                          child: Text(
+                            '${project.progress}%',
+                            style: const TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.textColor,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 

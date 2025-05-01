@@ -23,48 +23,83 @@ class _LoginScreenState extends State<LoginScreen> {
   final _authService = AuthService();
 
   @override
+  void initState() {
+    super.initState();
+    print('=== Login Screen Initialized ===');
+    print('Screen mounted: $mounted');
+  }
+
+  @override
   void dispose() {
+    print('=== Login Screen Disposed ===');
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
   }
 
   Future<void> _handleLogin() async {
+    print('=== Login Attempt Started ===');
+    print('Email: ${_emailController.text}');
+    print('Remember Me: $_rememberMe');
+
     if (_formKey.currentState?.validate() ?? false) {
+      print('Form validation passed');
       setState(() => _isLoading = true);
 
       try {
-        await _authService.login(
+        print('Attempting to login with AuthService...');
+        final token = await _authService.login(
           email: _emailController.text,
           password: _passwordController.text,
           rememberMe: _rememberMe,
         );
+        print('Login successful, token received');
 
         if (mounted) {
+          print('Navigating to Dashboard...');
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(builder: (context) => const DashboardScreen()),
           );
         }
       } catch (e) {
+        print('=== Login Error ===');
+        print('Error type: ${e.runtimeType}');
+        print('Error message: $e');
+
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(e.toString())),
+            SnackBar(
+              content: Text(e.toString()),
+              duration: const Duration(seconds: 5),
+              action: SnackBarAction(
+                label: 'Dismiss',
+                onPressed: () {
+                  ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                },
+              ),
+            ),
           );
         }
       } finally {
         if (mounted) {
+          print('Login attempt completed, updating UI state');
           setState(() => _isLoading = false);
         }
       }
+    } else {
+      print('Form validation failed');
     }
+    print('=== Login Attempt Ended ===');
   }
 
   void _togglePasswordVisibility() {
+    print('Toggling password visibility: ${!_isPasswordVisible}');
     setState(() => _isPasswordVisible = !_isPasswordVisible);
   }
 
   void _toggleRememberMe() {
+    print('Toggling remember me: ${!_rememberMe}');
     setState(() => _rememberMe = !_rememberMe);
   }
 
@@ -191,7 +226,7 @@ class _LoginScreenState extends State<LoginScreen> {
         const SizedBox(height: 24),
         Container(
           decoration: BoxDecoration(
-            color: const Color(0xFF2C2C2E),
+            color: const Color.fromARGB(31, 55, 56, 80),
             borderRadius: BorderRadius.circular(12),
           ),
           padding: EdgeInsets.symmetric(
