@@ -1,0 +1,25 @@
+# Node.js Dependencies
+node_modules/
+
+# Environment Variables
+.env
+
+# File Uploads (if using Multer)
+uploads/
+
+# Logs
+npm-debug.log*
+yarn-error.log*
+*.log
+
+# Editor Configs
+.vscode/
+.idea/
+ 
+# OS-Specific Files
+.DS_Store
+Thumbs.db
+
+# Build & Coverage (if using testing)
+coverage/
+dist/
