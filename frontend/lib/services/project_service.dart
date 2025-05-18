@@ -5,13 +5,19 @@ import '../config/constants.dart';
 import '../models/project_model.dart';
 import '../models/project_status.dart';
 import 'auth_service.dart';
+import 'package:dio/dio.dart';
 
 class ProjectService {
   final AuthService _authService = AuthService();
+  final Dio _dio = Dio();
+  final String baseUrl = 'http://localhost:3003/api';
 
   Future<String?> _getToken() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString('token');
+    try {
+      return await _authService.getToken();
+    } catch (e) {
+      throw 'Failed to get auth token: $e';
+    }
   }
 
   Future<void> _handleTokenExpiration() async {
@@ -219,9 +225,11 @@ class ProjectService {
 
   // 📌 Get recent projects (for Dashboard)
   Future<List<Project>> getRecentProjects() async {
+    print('=== getRecentProjects Debug ===');
     final token = await _getToken();
     if (token == null) throw Exception('Authentication token not found');
 
+    print('1. Making API request to fetch recent projects...');
     final response = await http.get(
       Uri.parse('${ApiConstants.baseUrl}/projects?recent=true'),
       headers: {
@@ -230,28 +238,48 @@ class ProjectService {
       },
     );
 
+    print('2. API Response Status: ${response.statusCode}');
+    print('3. API Response Body: ${response.body}');
+
     if (response.statusCode == 401) {
+      print('4. Authentication error - token expired');
       await _handleTokenExpiration();
       throw Exception('Session expired. Please log in again.');
     }
 
     if (response.statusCode == 200) {
+      print('4. Processing successful response...');
       final List<dynamic> data = json.decode(response.body);
+      print('5. Decoded JSON data:');
+      print(data);
 
       final List<Project> projects = [];
+      print('6. Converting data to Project objects...');
       for (final projectJson in data) {
         try {
+          print('Processing project:');
+          print(projectJson);
+
           final projectDetails = await getProjectDetails(
             projectJson['_id'] ?? projectJson['id'],
           );
+          print('Project details fetched:');
+          print(projectDetails);
+
           projects.add(projectDetails);
         } catch (e) {
+          print('Error processing project: $e');
+          print('Falling back to basic project data');
           projects.add(Project.fromJson(projectJson));
         }
       }
+
+      print('7. Final projects list:');
+      print(projects);
       return projects;
     } else {
       final errorBody = json.decode(response.body);
+      print('4. Error response: $errorBody');
       throw Exception(errorBody['message'] ?? 'Failed to load recent projects');
     }
   }
@@ -315,6 +343,66 @@ class ProjectService {
       }
     } catch (e) {
       throw Exception('Error updating project progress: $e');
+    }
+  }
+
+  Future<List<Project>> getPersonalProjects() async {
+    try {
+      final token = await _getToken();
+      if (token == null) throw 'Not authenticated';
+
+      final response = await http.get(
+        Uri.parse('$baseUrl/projects').replace(
+          queryParameters: {'type': 'personal'},
+        ),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode != 200) {
+        throw 'Failed to fetch personal projects: ${response.body}';
+      }
+
+      final List<dynamic> data = json.decode(response.body);
+      return data.map((json) => Project.fromJson(json)).toList();
+    } catch (e) {
+      throw 'Failed to fetch personal projects: $e';
+    }
+  }
+
+  Future<List<Project>> getTeamProjects() async {
+    try {
+      final token = await _getToken();
+      if (token == null) throw 'Not authenticated';
+
+      final response = await http.get(
+        Uri.parse('$baseUrl/projects').replace(
+          queryParameters: {'type': 'team'},
+        ),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode != 200) {
+        throw 'Failed to fetch team projects: ${response.body}';
+      }
+
+      final List<dynamic> data = json.decode(response.body);
+
+      // Debug log for team data
+      print('🔍 Team Projects Response:');
+      for (var project in data) {
+        print('Project: ${project['title']}');
+        print('Team data: ${project['team']}');
+      }
+
+      return data.map((json) => Project.fromJson(json)).toList();
+    } catch (e) {
+      throw 'Failed to fetch team projects: $e';
     }
   }
 }

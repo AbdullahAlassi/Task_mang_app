@@ -3,10 +3,12 @@ import 'package:intl/intl.dart';
 import '../../config/app_colors.dart';
 import '../../models/task_model.dart';
 import '../../models/user_model.dart';
+import '../../models/team_model.dart';
 import '../../services/task_service.dart';
 import '../../services/project_service.dart';
 import '../../services/user_service.dart';
 import '../../services/board_service.dart';
+import '../../services/team_service.dart';
 
 class CreateTaskScreen extends StatefulWidget {
   final String projectId;
@@ -32,22 +34,29 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
   final _projectService = ProjectService();
   final _userService = UserService();
   final _boardService = BoardService();
+  final TeamService _teamService = TeamService();
 
   DateTime? _dueDate;
   List<String> _assignedTo = [];
+  String? _assignedTeamId;
   bool _isLoading = false;
-  String _priority = 'Medium';
+  TaskPriority _priority = TaskPriority.medium;
   Color _selectedColor = Colors.blue;
   List<User> _projectMembers = [];
   List<User> _filteredMembers = [];
+  List<Team> _subTeams = [];
+  Team? _mainTeam;
+  String? _projectType;
+  String? _projectTeamId;
   final _searchController = TextEditingController();
+  List<User> _mainTeamMembers = [];
 
   // Priority options
-  final List<String> _priorities = [
-    'Low',
-    'Medium',
-    'High',
-    'Urgent',
+  final List<TaskPriority> _priorities = [
+    TaskPriority.low,
+    TaskPriority.medium,
+    TaskPriority.high,
+    TaskPriority.urgent,
   ];
 
   // Color options
@@ -66,45 +75,44 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
     if (widget.taskId != null) {
       _loadTaskDetails();
     }
-    _loadProjectMembers();
+    _loadProjectMembersAndTeams();
   }
 
-  Future<void> _loadProjectMembers() async {
+  Future<void> _loadProjectMembersAndTeams() async {
+    setState(() => _isLoading = true);
     try {
-      setState(() => _isLoading = true);
-      print('\n=== Loading Project Members ===');
-
-      // Get the project ID from the board
-      final board = await _boardService.getBoardDetails(widget.boardId);
-      final projectId = board.project;
-      print('Project ID from board: $projectId');
-
-      // First get the project details to get the member IDs
-      final project = await _projectService.getProjectDetails(projectId);
-      print('Project loaded: ${project.title}');
-      print('Project member IDs: ${project.memberIds}');
-
-      // Only fetch users that are members of this project
-      final members = await _userService.getUsersByIds(project.memberIds);
-      print('Fetched ${members.length} members');
-
+      final project = await _projectService.getProjectDetails(widget.projectId);
+      _projectType = (project as dynamic).type ?? 'personal';
+      _projectTeamId = (project as dynamic).teamId ?? null;
+      List<User> members = [];
+      List<Team> subTeams = [];
+      Team? mainTeam;
+      if (_projectType == 'team' && _projectTeamId != null) {
+        mainTeam = await _teamService.getTeamById(_projectTeamId!);
+        subTeams = mainTeam.childrenIds.isNotEmpty
+            ? await Future.wait(
+                mainTeam.childrenIds.map((id) => _teamService.getTeamById(id)))
+            : [];
+        // Fetch user details for all main team members
+        if (mainTeam.members.isNotEmpty) {
+          final userIds = mainTeam.members.map((m) => m.userId).toList();
+          members = await _userService.getUsersByIds(userIds);
+        }
+      } else {
+        members = project.memberIds
+            .map((id) => User(id: id, name: '', email: ''))
+            .toList();
+      }
       setState(() {
+        _mainTeam = mainTeam;
+        _subTeams = subTeams;
         _projectMembers = members;
         _filteredMembers = members;
+        _mainTeamMembers = members;
         _isLoading = false;
       });
-      print('Project members loaded successfully');
-    } catch (e, stackTrace) {
-      print('\nError loading project members:');
-      print('Error message: $e');
-      print('Stack trace:');
-      print(stackTrace);
+    } catch (e) {
       setState(() => _isLoading = false);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to load project members: $e')),
-        );
-      }
     }
   }
 
@@ -143,7 +151,7 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
         _descriptionController.text = task.description;
         _dueDate = task.deadline;
         _assignedTo = task.assignedTo;
-        _priority = task.getPriority();
+        _priority = task.priority;
         _selectedColor = task.color ?? Colors.blue;
         _isLoading = false;
       });
@@ -205,7 +213,7 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
           'description': _descriptionController.text,
           'deadline': _dueDate?.toIso8601String(),
           'assignedTo': _assignedTo,
-          'priority': _priority,
+          'priority': _priority.name,
           'color': '#${_selectedColor.value.toRadixString(16).substring(2)}',
           'board': widget.boardId,
           'projectId': widget.projectId,
@@ -380,20 +388,20 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: DropdownButtonHideUnderline(
-                        child: DropdownButton<String>(
+                        child: DropdownButton<TaskPriority>(
                           value: _priority,
                           isExpanded: true,
                           dropdownColor: AppColors.cardColor,
                           style: const TextStyle(color: AppColors.textColor),
                           icon: const Icon(Icons.arrow_drop_down,
                               color: AppColors.primaryColor),
-                          items: _priorities.map((String priority) {
-                            return DropdownMenuItem<String>(
+                          items: _priorities.map((TaskPriority priority) {
+                            return DropdownMenuItem<TaskPriority>(
                               value: priority,
-                              child: Text(priority),
+                              child: Text(priority.name),
                             );
                           }).toList(),
-                          onChanged: (String? newValue) {
+                          onChanged: (TaskPriority? newValue) {
                             if (newValue != null) {
                               setState(() {
                                 _priority = newValue;
@@ -451,9 +459,9 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                     ),
                     const SizedBox(height: 24),
 
-                    // Member Selection Section
+                    // Assignment Section
                     const Text(
-                      'Assign Members',
+                      'Assign To',
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
@@ -461,122 +469,85 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                       ),
                     ),
                     const SizedBox(height: 8),
-
-                    // Search Bar for Members
-                    TextFormField(
-                      controller: _searchController,
-                      style: const TextStyle(color: AppColors.textColor),
-                      decoration: InputDecoration(
-                        hintText: 'Search project members',
-                        filled: true,
-                        fillColor: AppColors.cardColor,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide.none,
-                        ),
-                        prefixIcon: const Icon(Icons.search,
-                            color: AppColors.primaryColor),
-                        suffixIcon: _searchController.text.isNotEmpty
-                            ? IconButton(
-                                icon: const Icon(Icons.clear,
-                                    color: AppColors.primaryColor),
-                                onPressed: () {
-                                  _searchController.clear();
-                                  _onSearchChanged('');
-                                },
-                              )
-                            : null,
-                      ),
-                      onChanged: _onSearchChanged,
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Selected Members
-                    if (_assignedTo.isNotEmpty) ...[
-                      const Text(
-                        'Selected Members',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.textColor,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      ..._projectMembers
-                          .where((user) => _assignedTo.contains(user.id))
-                          .map((user) => ListTile(
-                                leading: const Icon(Icons.person,
-                                    color: AppColors.primaryColor),
-                                title: Text(user.name),
-                                subtitle: Text(user.email),
-                                trailing: IconButton(
-                                  icon: const Icon(Icons.remove_circle_outline,
-                                      color: Colors.red),
-                                  onPressed: () {
-                                    setState(() {
-                                      _assignedTo.remove(user.id);
-                                    });
-                                  },
-                                ),
-                              )),
-                      const SizedBox(height: 16),
-                    ],
-
-                    // Available Members
-                    const Text(
-                      'Available Members',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.textColor,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    _filteredMembers.isEmpty
-                        ? const Center(
-                            child: Padding(
-                              padding: EdgeInsets.all(16.0),
-                              child: Text(
-                                'No project members found',
-                                style: TextStyle(
-                                    color: AppColors.secondaryTextColor),
+                    if (_projectType == 'team' && _mainTeam != null)
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (_subTeams.isNotEmpty)
+                            DropdownButtonFormField<String>(
+                              value: _assignedTeamId,
+                              items: _subTeams
+                                  .map((team) => DropdownMenuItem(
+                                        value: team.id,
+                                        child: Text(team.name),
+                                      ))
+                                  .toList(),
+                              onChanged: (value) {
+                                setState(() {
+                                  _assignedTeamId = value;
+                                });
+                              },
+                              decoration: const InputDecoration(
+                                labelText: 'Assign to Sub-team (optional)',
+                                border: OutlineInputBorder(),
                               ),
                             ),
-                          )
-                        : ListView.builder(
-                            shrinkWrap: true,
-                            physics: const NeverScrollableScrollPhysics(),
-                            itemCount: _filteredMembers.length,
-                            itemBuilder: (context, index) {
-                              final user = _filteredMembers[index];
-                              final isSelected = _assignedTo.contains(user.id);
-                              return ListTile(
-                                leading: const Icon(Icons.person_outline,
-                                    color: AppColors.primaryColor),
-                                title: Text(user.name),
-                                subtitle: Text(user.email),
-                                trailing: IconButton(
-                                  icon: Icon(
-                                    isSelected
-                                        ? Icons.check_circle
-                                        : Icons.add_circle_outline,
-                                    color: isSelected
-                                        ? Colors.green
-                                        : AppColors.primaryColor,
-                                  ),
-                                  onPressed: () {
-                                    setState(() {
-                                      if (isSelected) {
-                                        _assignedTo.remove(user.id);
-                                      } else {
-                                        _assignedTo.add(user.id);
-                                      }
-                                    });
-                                  },
-                                ),
-                              );
-                            },
+                          const SizedBox(height: 12),
+                          // Members of the main team
+                          const Text(
+                            'Or assign to individual team members:',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: AppColors.secondaryTextColor,
+                            ),
                           ),
+                          ..._mainTeamMembers.map((user) => CheckboxListTile(
+                                value: _assignedTo.contains(user.id),
+                                onChanged: (checked) {
+                                  setState(() {
+                                    if (checked == true) {
+                                      _assignedTo.add(user.id);
+                                    } else {
+                                      _assignedTo.remove(user.id);
+                                    }
+                                  });
+                                },
+                                title: Text(user.name.isNotEmpty
+                                    ? user.name
+                                    : user.id), // Show user name if available
+                                subtitle: user.email.isNotEmpty
+                                    ? Text(user.email)
+                                    : null,
+                              )),
+                        ],
+                      )
+                    else
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Assign to project members:',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: AppColors.secondaryTextColor,
+                            ),
+                          ),
+                          ..._projectMembers.map((user) => CheckboxListTile(
+                                value: _assignedTo.contains(user.id),
+                                onChanged: (checked) {
+                                  setState(() {
+                                    if (checked == true) {
+                                      _assignedTo.add(user.id);
+                                    } else {
+                                      _assignedTo.remove(user.id);
+                                    }
+                                  });
+                                },
+                                title: Text(user
+                                    .id), // You can show user name if available
+                              )),
+                        ],
+                      ),
 
                     const SizedBox(height: 40),
 

@@ -15,8 +15,12 @@ const boardSchema = new mongoose.Schema({
     enum: ['To Do', 'In Progress', 'Done'], 
     default: 'To Do' 
   },
+  position: { type: Number, default: 0 }, // Position in the board list
   deadline: { type: Date },
   commentCount: { type: Number, default: 0 },
 }, { timestamps: true });
+
+// Add index for position to improve sorting performance
+boardSchema.index({ project: 1, position: 1 });
 
 module.exports = mongoose.model('Board', boardSchema);

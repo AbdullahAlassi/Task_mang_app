@@ -6,7 +6,8 @@ import 'package:jwt_decoder/jwt_decoder.dart';
 import '../models/user_model.dart';
 
 class AuthService {
-  static const String baseUrl = 'http://10.0.2.2:3000/api';
+  //static const String baseUrl = 'http://10.0.2.2:3000/api';
+  static const String baseUrl = 'http://localhost:3003/api';
   static const String _tokenKey = 'token';
   static const String _tokenExpiryKey = 'token_expiry';
 
@@ -206,8 +207,13 @@ class AuthService {
   }
 
   Future<String?> getCurrentUserId() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString('userId');
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getString('userId');
+    } catch (e) {
+      print('Error getting current user ID: $e');
+      return null;
+    }
   }
 
   Future<String?> getCurrentUserRole() async {

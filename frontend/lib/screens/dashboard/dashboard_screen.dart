@@ -6,6 +6,8 @@ import 'package:frontend/screens/tasks/create_task_screen.dart';
 import 'package:frontend/screens/tasks/task_detail_screen.dart';
 import 'package:frontend/screens/tasks/ongoing_tasks_screen.dart';
 import 'package:frontend/screens/calendar/calendar_screen.dart';
+import 'package:frontend/screens/notifications/notifications_screen.dart';
+import 'package:frontend/screens/teams/team_hierarchy_screen.dart';
 import 'package:intl/intl.dart';
 import '../../config/app_colors.dart';
 import '../../models/project_model.dart';
@@ -55,17 +57,43 @@ class _DashboardScreenState extends State<DashboardScreen> {
     });
 
     try {
-      // In a real app, these would be API calls
+      print('=== Dashboard Data Loading Debug ===');
+      print('1. Starting to fetch recent projects...');
+
+      // Fetch recent projects
       final projects = await _projectService.getRecentProjects();
+      print('2. Raw projects data received:');
+      print(projects);
+
+      print('3. Processing projects data...');
+      for (var project in projects) {
+        print('Project ID: ${project.id}');
+        print('Project Title: ${project.title}');
+        print('Project Progress: ${project.progress}');
+        print('Project Total Tasks: ${project.totalTasks}');
+        print('Project Completed Tasks: ${project.completedTasks}');
+        print('Project Status: ${project.status}');
+        print('---');
+      }
+
+      print('4. Starting to fetch ongoing tasks...');
       final tasks = await _taskService.getOngoingTasks();
+      print('5. Tasks data received:');
+      print(tasks);
 
       setState(() {
         _recentProjects = projects;
         _ongoingTasks = tasks;
         _isLoading = false;
       });
-    } catch (e) {
-      // Handle error
+
+      print('6. Data loading completed successfully');
+    } catch (e, stackTrace) {
+      print('=== Error in Dashboard Data Loading ===');
+      print('Error message: $e');
+      print('Stack trace:');
+      print(stackTrace);
+
       setState(() {
         _isLoading = false;
       });
@@ -105,8 +133,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
         break;
       case 3:
         // Navigate to notifications screen
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Notifications screen coming soon')),
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const NotificationsScreen()),
         );
         break;
     }
@@ -254,10 +283,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       elevation: 0,
                       leadingWidth: 60,
                       leading: IconButton(
-                        icon: const Icon(Icons.grid_view,
+                        icon: const Icon(Icons.workspace_premium_outlined,
                             color: AppColors.primaryColor),
                         onPressed: () {
-                          // Open drawer or menu
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (context) =>
+                                    const TeamHierarchyScreen()),
+                          );
                         },
                       ),
                       title: const Text(

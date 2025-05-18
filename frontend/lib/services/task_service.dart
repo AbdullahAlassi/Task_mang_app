@@ -7,9 +7,9 @@ import '../services/project_service.dart';
 
 class TaskService {
   // Update the baseUrl to match your actual backend URL
+  //static const String baseUrl ='http://10.0.2.2:3000/api'; // For Android emulator
   static const String baseUrl =
-      'http://10.0.2.2:3000/api'; // For Android emulator
-  // static const String baseUrl = 'http://localhost:3000/api'; // For iOS simulator
+      'http://localhost:3003/api'; // For iOS simulator
   // static const String baseUrl = 'http://YOUR_ACTUAL_IP:3000/api'; // For physical device
 
   final AuthService _authService = AuthService();
@@ -17,8 +17,11 @@ class TaskService {
 
   // Get token from shared preferences
   Future<String?> _getToken() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString('token');
+    try {
+      return await _authService.getToken();
+    } catch (e) {
+      throw 'Failed to get auth token: $e';
+    }
   }
 
   // Get all tasks
@@ -235,14 +238,21 @@ class TaskService {
       final boardId = taskData['board'];
       final projectId = taskData['projectId'];
 
+      // Get current user ID
+      final currentUserId = await _authService.getCurrentUserId();
+      if (currentUserId == null) {
+        throw Exception('Could not get current user ID');
+      }
+
       final requestBody = {
         'title': taskData['title'],
         'description': taskData['description'],
-        'status': 'To Do',
         'deadline': taskData['deadline'],
         'board': boardId,
         'assignedTo': taskData['assignedTo'],
         'color': taskData['color'],
+        'priority': taskData['priority'],
+        'createdBy': currentUserId, // Add the current user as creator
       };
       print('Request body: $requestBody');
 
@@ -696,6 +706,58 @@ class TaskService {
     } catch (e) {
       print('Error updating task deadline: $e');
       rethrow;
+    }
+  }
+
+  Future<List<Task>> getPersonalTasks() async {
+    try {
+      final token = await _getToken();
+      if (token == null) throw 'Not authenticated';
+
+      final response = await http.get(
+        Uri.parse('$baseUrl/tasks').replace(
+          queryParameters: {'type': 'personal'},
+        ),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode != 200) {
+        throw 'Failed to fetch personal tasks: ${response.body}';
+      }
+
+      final List<dynamic> data = json.decode(response.body);
+      return data.map((json) => Task.fromJson(json)).toList();
+    } catch (e) {
+      throw 'Failed to fetch personal tasks: $e';
+    }
+  }
+
+  Future<List<Task>> getTeamTasks() async {
+    try {
+      final token = await _getToken();
+      if (token == null) throw 'Not authenticated';
+
+      final response = await http.get(
+        Uri.parse('$baseUrl/tasks').replace(
+          queryParameters: {'type': 'team'},
+        ),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode != 200) {
+        throw 'Failed to fetch team tasks: ${response.body}';
+      }
+
+      final List<dynamic> data = json.decode(response.body);
+      return data.map((json) => Task.fromJson(json)).toList();
+    } catch (e) {
+      throw 'Failed to fetch team tasks: $e';
     }
   }
 }

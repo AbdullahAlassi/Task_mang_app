@@ -6,6 +6,10 @@ import '../../../models/project_model.dart';
 import '../../../services/project_service.dart';
 import '../../../services/user_service.dart';
 import '../../../models/user_model.dart';
+import '../../models/team_model.dart';
+import '../../services/team_service.dart';
+import '../../screens/teams/team_hierarchy_screen.dart';
+import '../../services/auth_service.dart';
 
 class CreateProjectScreen extends StatefulWidget {
   final Project? project; // If provided, we're editing an existing project
@@ -28,6 +32,15 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
   DateTime? _deadline;
   bool _isLoading = false;
   String _selectedColor = '#6B4EFF'; // Default color
+
+  // Project type: 'personal' or 'team'
+  String _projectType = 'personal';
+  String? _selectedTeamId;
+  Team? _selectedTeam;
+  List<Team> _allTeams = [];
+  final TeamService _teamService = TeamService();
+  final AuthService _authService = AuthService();
+  String? _currentUserId;
 
   // Predefined project colors
   final List<String> _projectColors = [
@@ -59,9 +72,11 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
       _deadline = widget.project!.deadline;
       _selectedMemberIds = widget.project!.memberIds;
       _selectedColor = widget.project!.color;
+      _projectType = (widget.project as dynamic).type ?? 'personal';
+      _selectedTeamId = (widget.project as dynamic).teamId ?? null;
     }
-
     _loadUsers();
+    _loadTeams();
   }
 
   @override
@@ -86,6 +101,22 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Failed to load users: $e')),
       );
+    }
+  }
+
+  Future<void> _loadTeams() async {
+    try {
+      final userId = await _authService.getCurrentUserId();
+      final teams = await _teamService.getAllTeams();
+      setState(() {
+        _currentUserId = userId;
+        _allTeams = teams
+            .where((team) => team.members
+                .any((m) => m.userId == userId && m.role == 'team_lead'))
+            .toList();
+      });
+    } catch (e) {
+      // ignore error
     }
   }
 
@@ -137,76 +168,65 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
   }
 
   Future<void> _saveProject() async {
-    if (_formKey.currentState!.validate()) {
-      setState(() {
-        _isLoading = true;
-      });
+    if (!_formKey.currentState!.validate()) return;
+    if (_projectType == 'team' && _selectedTeamId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select a team for Team Project')),
+      );
+      return;
+    }
 
-      try {
-        final projectData = {
-          'title': _titleController.text,
-          'description': _descriptionController.text,
-          'deadline': _deadline?.toIso8601String(),
-          'members': _selectedMemberIds,
-          'progress': 0,
-          'totalTasks': 0,
-          'completedTasks': 0,
-          'boards': [],
-          'color': _selectedColor,
-          'status': 'To Do',
-        };
+    setState(() => _isLoading = true);
 
-        print('Creating/Updating project with data: $projectData');
+    try {
+      final projectData = {
+        'title': _titleController.text,
+        'description': _descriptionController.text,
+        'deadline': _deadline?.toIso8601String(),
+        'members': _selectedMemberIds,
+        'progress': 0,
+        'totalTasks': 0,
+        'completedTasks': 0,
+        'boards': [],
+        'color': _selectedColor,
+        'status': 'To Do',
+        'type': _projectType,
+        if (_projectType == 'team') 'team': _selectedTeamId,
+      };
 
-        if (widget.project != null) {
-          // Update existing project
-          await _projectService.updateProject(widget.project!.id, projectData);
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Project updated successfully')),
-            );
-          }
-        } else {
-          // Create new project
-          final newProject = await _projectService.createProject(projectData);
-          print('Created project with color: ${newProject.color}');
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Project created successfully')),
-            );
-          }
-        }
+      print('Creating/Updating project with data: $projectData');
 
-        if (mounted) {
-          Navigator.pop(context, true); // Return true to indicate success
-        }
-      } catch (e) {
-        print('Error saving project: $e');
+      if (widget.project != null) {
+        // Update existing project
+        await _projectService.updateProject(widget.project!.id, projectData);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Failed to save project: $e'),
-              duration: const Duration(seconds: 5),
-              action: SnackBarAction(
-                label: 'Copy Error',
-                onPressed: () {
-                  // Copy error details to clipboard
-                  final errorDetails = 'Error: $e';
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                        content: Text('Error details copied to clipboard')),
-                  );
-                },
-              ),
-            ),
+            const SnackBar(content: Text('Project updated successfully')),
           );
         }
-      } finally {
+      } else {
+        // Create new project
+        final newProject = await _projectService.createProject(projectData);
+        print('Created project with color: ${newProject.color}');
         if (mounted) {
-          setState(() {
-            _isLoading = false;
-          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Project created successfully')),
+          );
         }
+      }
+
+      if (mounted) {
+        Navigator.pop(context, true); // Return true to indicate success
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to save project: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
       }
     }
   }
@@ -358,6 +378,105 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // Project Type Selection
+                    const Text(
+                      'Project Type',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.textColor,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Radio<String>(
+                          value: 'personal',
+                          groupValue: _projectType,
+                          onChanged: (value) {
+                            setState(() {
+                              _projectType = value!;
+                              _selectedTeamId = null;
+                              _selectedTeam = null;
+                            });
+                          },
+                        ),
+                        const Text('Normal Project'),
+                        const SizedBox(width: 16),
+                        Radio<String>(
+                          value: 'team',
+                          groupValue: _projectType,
+                          onChanged: (value) {
+                            setState(() {
+                              _projectType = value!;
+                            });
+                          },
+                        ),
+                        const Text('Team Project'),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    if (_projectType == 'team')
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Select Team',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.textColor,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          // You can use a dropdown or a custom team picker here
+                          DropdownButtonFormField<String>(
+                            value: _selectedTeamId,
+                            items: _allTeams
+                                .map((team) => DropdownMenuItem(
+                                      value: team.id,
+                                      child: Text(team.name),
+                                    ))
+                                .toList(),
+                            onChanged: (value) {
+                              setState(() {
+                                _selectedTeamId = value;
+                                _selectedTeam = _allTeams.firstWhere(
+                                  (team) => team.id == value,
+                                  orElse: () => Team(
+                                    id: '',
+                                    name: '',
+                                    childrenIds: [],
+                                    members: [],
+                                    type: '',
+                                    status: '',
+                                    metadata: TeamMetadata(),
+                                    settings: TeamSettings(
+                                      allowMemberInvites: false,
+                                      requireApprovalForJoining: true,
+                                      visibility: 'private',
+                                    ),
+                                    createdAt: DateTime.now(),
+                                    updatedAt: DateTime.now(),
+                                  ),
+                                );
+                              });
+                            },
+                            decoration: const InputDecoration(
+                              labelText: 'Team',
+                              border: OutlineInputBorder(),
+                            ),
+                            validator: (value) {
+                              if (_projectType == 'team' &&
+                                  (value == null || value.isEmpty)) {
+                                return 'Please select a team';
+                              }
+                              return null;
+                            },
+                          ),
+                          const SizedBox(height: 16),
+                        ],
+                      ),
                     // Title Field
                     const Text(
                       'Project Title',

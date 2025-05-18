@@ -27,6 +27,7 @@ class TaskCard extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(12),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Color banner
@@ -41,35 +42,63 @@ class TaskCard extends StatelessWidget {
               ),
             ),
             Padding(
-              padding: const EdgeInsets.all(16.0),
+              padding: const EdgeInsets.all(12.0),
               child: Column(
+                mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Task title
-                  Text(
-                    task.title,
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.textColor,
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
+                  // Task title and priority
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          task.title,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.textColor,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      // Priority badge
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: task.priority.color.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          task.priority.name,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: task.priority.color,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 6),
 
                   // Task description
                   if (task.description.isNotEmpty)
                     Text(
                       task.description,
                       style: const TextStyle(
-                        fontSize: 14,
+                        fontSize: 13,
                         color: AppColors.secondaryTextColor,
                       ),
-                      maxLines: 2,
+                      maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 6),
 
                   // Task status and deadline
                   Row(
@@ -78,17 +107,17 @@ class TaskCard extends StatelessWidget {
                       // Status badge
                       Container(
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
+                          horizontal: 6,
+                          vertical: 2,
                         ),
                         decoration: BoxDecoration(
                           color: task.getStatusColor().withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(
                           task.status,
                           style: TextStyle(
-                            fontSize: 12,
+                            fontSize: 11,
                             color: task.getStatusColor(),
                             fontWeight: FontWeight.bold,
                           ),
@@ -98,17 +127,18 @@ class TaskCard extends StatelessWidget {
                       // Deadline
                       if (task.deadline != null)
                         Row(
+                          mainAxisSize: MainAxisSize.min,
                           children: [
                             const Icon(
                               Icons.calendar_today,
-                              size: 16,
+                              size: 14,
                               color: AppColors.secondaryTextColor,
                             ),
-                            const SizedBox(width: 4),
+                            const SizedBox(width: 2),
                             Text(
                               DateFormat('MMM d').format(task.deadline!),
                               style: const TextStyle(
-                                fontSize: 12,
+                                fontSize: 11,
                                 color: AppColors.secondaryTextColor,
                               ),
                             ),
@@ -116,17 +146,16 @@ class TaskCard extends StatelessWidget {
                         ),
                     ],
                   ),
-                  const SizedBox(height: 8),
-
-                  // Completion checkbox
-                  if (onStatusChanged != null)
+                  if (onStatusChanged != null) ...[
+                    const SizedBox(height: 6),
+                    // Completion checkbox
                     Align(
                       alignment: Alignment.centerRight,
                       child: GestureDetector(
                         onTap: () => onStatusChanged!(!task.isCompleted),
                         child: Container(
-                          width: 24,
-                          height: 24,
+                          width: 20,
+                          height: 20,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
                             color: task.isCompleted
@@ -134,19 +163,20 @@ class TaskCard extends StatelessWidget {
                                 : Colors.transparent,
                             border: Border.all(
                               color: AppColors.primaryColor,
-                              width: 2,
+                              width: 1.5,
                             ),
                           ),
                           child: task.isCompleted
                               ? const Icon(
                                   Icons.check,
-                                  size: 16,
+                                  size: 14,
                                   color: Colors.white,
                                 )
                               : null,
                         ),
                       ),
                     ),
+                  ],
                 ],
               ),
             ),

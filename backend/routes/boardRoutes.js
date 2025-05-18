@@ -5,6 +5,7 @@ const Project = require('../models/projectModel');
 const Task = require('../models/taskModel');
 const authMiddleware = require('../middleware/auth');
 const Notification = require('../models/notificationModel');
+const boardController = require('../controllers/boardController');
 
 // Helper function to update project task counts
 async function updateProjectTaskCounts(projectId) {
@@ -211,5 +212,8 @@ router.put('/:id/status', authMiddleware, async (req, res) => {
     res.status(400).json({ error: error.message });
   }
 });
+
+// Update board positions
+router.put('/projects/:projectId/boards/positions', authMiddleware, boardController.updateBoardPositions);
 
 module.exports = router;

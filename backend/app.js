@@ -24,13 +24,16 @@ app.use('/api/projects', require('./routes/projectRoutes'));
 app.use('/api/boards', require('./routes/boardRoutes'));
 app.use('/api/tasks', require('./routes/taskRoutes'));
 app.use('/api/teams', require('./routes/teamRoutes'));
+app.use('/api/calendar', require('./routes/calendarRoutes'));
+app.use('/api/notifications', require('./routes/notificationRoutes'));
+
 
 // 🔹 Error Handling Middleware
 const errorMiddleware = require('./middleware/errorMiddleware');
 app.use(errorMiddleware);
 
 // 🔹 Start Server (✅ FIXED: Use `server.listen`, not `app.listen`)
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3003;
 server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
 
 module.exports = { app, server };

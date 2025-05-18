@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:frontend/screens/notifications/notifications_screen.dart';
 import 'package:frontend/screens/profile/edit_profile_screen.dart';
 import '../../config/app_colors.dart';
 import '../../services/auth_service.dart';
@@ -66,8 +67,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
         );
         break;
       case 3:
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Notifications screen coming soon')),
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const NotificationsScreen()),
         );
         break;
     }
@@ -179,13 +181,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     icon: Icons.person_outline,
                     title: 'Edit Profile',
                     onTap: _showEditProfileDialog,
-                  ),
-                  _buildMenuItem(
-                    icon: Icons.notifications_none,
-                    title: 'Notifications',
-                    onTap: () {
-                      // Handle notifications tap
-                    },
                   ),
                   _buildMenuItem(
                     icon: Icons.security,

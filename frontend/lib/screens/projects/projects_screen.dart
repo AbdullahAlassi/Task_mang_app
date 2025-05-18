@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:frontend/screens/profile/profile_screen.dart';
+import 'package:frontend/screens/notifications/notifications_screen.dart';
+import 'package:frontend/screens/teams/team_hierarchy_screen.dart';
 import 'package:intl/intl.dart';
 import '../../../config/app_colors.dart';
 import '../../../models/project_model.dart';
@@ -19,17 +21,35 @@ class ProjectsScreen extends StatefulWidget {
   State<ProjectsScreen> createState() => _ProjectsScreenState();
 }
 
-class _ProjectsScreenState extends State<ProjectsScreen> {
+class _ProjectsScreenState extends State<ProjectsScreen>
+    with SingleTickerProviderStateMixin {
   final ProjectService _projectService = ProjectService();
   bool _isLoading = true;
   List<Project> _projects = [];
   ProjectStatus _selectedStatus = ProjectStatus.all;
   int _currentNavIndex = 1; // Project tab selected
+  late TabController _tabController;
+  String _selectedTab = 'personal'; // 'personal' or 'team'
 
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+    _tabController.addListener(() {
+      if (!_tabController.indexIsChanging) {
+        setState(() {
+          _selectedTab = _tabController.index == 0 ? 'personal' : 'team';
+        });
+        _loadProjects();
+      }
+    });
     _loadProjects();
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadProjects() async {
@@ -39,12 +59,17 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
 
     try {
       List<Project> projects;
-      if (_selectedStatus == ProjectStatus.all) {
-        // If "All" is selected, fetch all projects
-        projects = await _projectService.getAllProjects();
+      if (_selectedTab == 'personal') {
+        // Load personal projects
+        projects = await _projectService.getPersonalProjects();
       } else {
-        // Otherwise fetch projects by status
-        projects = await _projectService.getProjectsByStatus(_selectedStatus);
+        // Load team projects
+        projects = await _projectService.getTeamProjects();
+      }
+
+      if (_selectedStatus != ProjectStatus.all) {
+        projects =
+            projects.where((p) => p.status == _selectedStatus.name).toList();
       }
 
       setState(() {
@@ -55,7 +80,6 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
       setState(() {
         _isLoading = false;
       });
-      // Show error message
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Failed to load projects: $e')),
@@ -88,8 +112,9 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
         );
         break;
       case 3:
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Notifications screen coming soon')),
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const NotificationsScreen()),
         );
         break;
     }
@@ -130,15 +155,20 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
                   Row(
                     children: [
                       IconButton(
-                        icon: const Icon(Icons.grid_view,
+                        icon: const Icon(Icons.workspace_premium_outlined,
                             color: AppColors.primaryColor),
                         onPressed: () {
-                          // Open drawer or menu
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (context) =>
+                                    const TeamHierarchyScreen()),
+                          );
                         },
                       ),
                       const SizedBox(width: 8),
                       const Text(
-                        'My Projects',
+                        'Projects',
                         style: TextStyle(
                           fontSize: 24,
                           fontWeight: FontWeight.bold,
@@ -183,6 +213,51 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
               ),
             ),
 
+            // Project Type Tabs
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 16.0),
+              decoration: BoxDecoration(
+                color: AppColors.cardColor,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: TabBar(
+                controller: _tabController,
+                indicator: BoxDecoration(
+                  color: AppColors.primaryColor,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                dividerColor: Colors.transparent,
+                labelColor: Colors.white,
+                unselectedLabelColor: AppColors.textColor,
+                labelStyle: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+                unselectedLabelStyle: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.normal,
+                ),
+                tabs: [
+                  Tab(
+                    child: Container(
+                      width: double.infinity,
+                      alignment: Alignment.center,
+                      child: const Text('My Projects'),
+                    ),
+                  ),
+                  Tab(
+                    child: Container(
+                      width: double.infinity,
+                      alignment: Alignment.center,
+                      child: const Text('Team Projects'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
             // Status Filter Tabs
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
@@ -216,7 +291,7 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
                               ),
                               const SizedBox(height: 16),
                               Text(
-                                'No ${_selectedStatus.name} projects found',
+                                'No ${_selectedTab == 'personal' ? 'personal' : 'team'} ${_selectedStatus.name} projects found',
                                 style: const TextStyle(
                                   fontSize: 18,
                                   color: AppColors.secondaryTextColor,

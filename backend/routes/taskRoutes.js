@@ -69,10 +69,16 @@ async function updateProjectTaskCounts(boardId) {
 // Create a new task
 router.post('/:boardId', authMiddleware, async (req, res) => {
   try {
-    const { title, description, deadline, assignedTo, color } = req.body;
+    const { title, description, deadline, assignedTo, color, priority } = req.body;
     const board = await Board.findById(req.params.boardId);
     
     if (!board) return res.status(404).json({ message: 'Board not found' });
+
+    // Validate priority
+    const validPriorities = ['Low', 'Medium', 'High', 'Urgent'];
+    const taskPriority = validPriorities.includes(priority) ? priority : 'Medium';
+
+    console.log('Creating task with priority:', taskPriority); // Debug log
 
     const newTask = new Task({ 
       title, 
@@ -80,9 +86,14 @@ router.post('/:boardId', authMiddleware, async (req, res) => {
       deadline, 
       board: board._id, 
       assignedTo,
-      color: color || '#6B4EFF' // Include color with default fallback
+      color: color || '#6B4EFF',
+      priority: taskPriority, // Use validated priority
+      status: board.type || 'To Do', // Set status to board's type
+      createdBy: req.body.createdBy,
     });
     await newTask.save();
+
+    console.log('Task created with priority:', newTask.priority); // Debug log
 
     board.tasks.push(newTask._id);
     await board.save();
@@ -102,6 +113,7 @@ router.post('/:boardId', authMiddleware, async (req, res) => {
 
     res.status(201).json(newTask);
   } catch (error) {
+    console.error('Error creating task:', error); // Debug log
     res.status(500).json({ message: 'Error creating task', error });
   }
 });
@@ -158,6 +170,10 @@ router.put('/:id', authMiddleware, async (req, res) => {
     const taskId = req.params.id;
     const userId = req.user.id;
     const updates = req.body;
+    // Ensure priority is only set if provided and valid
+    if (updates.priority && !['Low', 'Medium', 'High', 'Urgent'].includes(updates.priority)) {
+      updates.priority = 'Medium';
+    }
 
     console.log('Task ID:', taskId);
     console.log('User ID:', userId);

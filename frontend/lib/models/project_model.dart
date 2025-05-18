@@ -14,6 +14,9 @@ class Project {
   final List<String> memberIds;
   final List<String> boardIds;
   final String color;
+  final String type;
+  final String? teamId;
+  final String? teamName;
 
   Project({
     required this.id,
@@ -29,6 +32,9 @@ class Project {
     required this.memberIds,
     required this.boardIds,
     required this.color,
+    required this.type,
+    this.teamId,
+    this.teamName,
   });
 
   // Get the status based on progress
@@ -43,17 +49,29 @@ class Project {
   }
 
   factory Project.fromJson(Map<String, dynamic> json) {
+    print('=== Project.fromJson Debug ===');
+    print('1. Input JSON:');
+    print(json);
+
     // Calculate progress if not provided
+    print('2. Processing progress data...');
     int progress = json['progress'] is int ? json['progress'] : 0;
     int totalTasks = json['totalTasks'] is int ? json['totalTasks'] : 0;
     int completedTasks =
         json['completedTasks'] is int ? json['completedTasks'] : 0;
 
+    print('Initial values:');
+    print('Progress: $progress');
+    print('Total Tasks: $totalTasks');
+    print('Completed Tasks: $completedTasks');
+
     if (progress == 0 && totalTasks > 0) {
       progress = ((completedTasks / totalTasks) * 100).round();
+      print('Calculated progress: $progress');
     }
 
     // Get status based on progress
+    print('3. Processing status...');
     String status = json['status'] ?? 'To Do';
     if (progress >= 100) {
       status = 'Completed';
@@ -62,8 +80,10 @@ class Project {
     } else {
       status = 'To Do';
     }
+    print('Final status: $status');
 
     // Handle boards field
+    print('4. Processing boards...');
     List<String> boardIds = [];
     if (json['boards'] != null && json['boards'] is List) {
       boardIds = (json['boards'] as List)
@@ -79,8 +99,10 @@ class Project {
           .cast<String>()
           .toList();
     }
+    print('Board IDs: $boardIds');
 
     // Handle members field
+    print('5. Processing members...');
     List<String> memberIds = [];
     if (json['members'] != null && json['members'] is List) {
       memberIds = (json['members'] as List)
@@ -96,8 +118,40 @@ class Project {
           .cast<String>()
           .toList();
     }
+    print('Member IDs: $memberIds');
 
-    return Project(
+    // Handle manager field
+    print('6. Processing manager...');
+    String managerId = '';
+    if (json['manager'] != null) {
+      if (json['manager'] is String) {
+        managerId = json['manager'];
+      } else if (json['manager'] is Map) {
+        managerId = json['manager']['_id'] ?? json['manager']['id'] ?? '';
+      }
+    }
+    print('Manager ID: $managerId');
+
+    // Handle team field
+    print('7. Processing team...');
+    String? teamId;
+    String? teamName;
+    if (json['team'] != null) {
+      if (json['team'] is String) {
+        teamId = json['team'];
+      } else if (json['team'] is Map) {
+        teamId = json['team']['_id'];
+        teamName = json['team']['title'] ?? json['team']['name'];
+        print('Team name extracted: $teamName');
+      }
+    }
+    teamId ??= json['teamId'];
+    teamName ??= json['teamName'];
+    print('Team ID: $teamId');
+    print('Team Name: $teamName');
+
+    print('8. Creating Project object...');
+    final project = Project(
       id: json['_id'] ?? json['id'],
       title: json['title'],
       description: json['description'] ?? '',
@@ -110,13 +164,17 @@ class Project {
       progress: progress,
       totalTasks: totalTasks,
       completedTasks: completedTasks,
-      managerId: json['manager'] is String
-          ? json['manager']
-          : (json['manager']?['_id'] ?? json['manager']),
+      managerId: managerId,
       memberIds: memberIds,
       boardIds: boardIds,
       color: json['color'] ?? '#6B4EFF',
+      type: json['type'] ?? 'personal',
+      teamId: teamId,
+      teamName: teamName,
     );
+
+    print('9. Project object created successfully');
+    return project;
   }
 
   Map<String, dynamic> toJson() {
@@ -132,6 +190,9 @@ class Project {
       'members': memberIds,
       'boards': boardIds,
       'color': color,
+      'type': type,
+      'teamId': teamId,
+      'teamName': teamName,
     };
   }
 

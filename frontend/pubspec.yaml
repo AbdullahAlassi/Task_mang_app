@@ -45,6 +45,8 @@ dependencies:
   syncfusion_flutter_calendar: ^29.1.40
   flutter_colorpicker: ^1.1.0
   dio: ^5.8.0+1
+  flutter_treeview: ^1.0.7+1
+  timeago: ^3.7.1
 
 dev_dependencies:
   flutter_test:

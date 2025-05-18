@@ -61,6 +61,7 @@ router.get('/', authMiddleware, async (req, res) => {
     const userId = req.user.id;
     const isRecent = req.query.recent === 'true';
     const status = req.query.status;
+    const type = req.query.type; // 'personal' or 'team'
 
     let query = {
       $or: [
@@ -69,9 +70,25 @@ router.get('/', authMiddleware, async (req, res) => {
       ]
     };
 
+    // Filter by project type
+    if (type === 'personal') {
+      query.type = 'personal';
+    } else if (type === 'team') {
+      query.type = 'team';
+    }
+
     // Add status filter if provided and not 'all'
     if (status && status !== 'all') {
       query.status = status;
+    }
+
+    // Visibility: Only show team projects if user is a member of the team
+    if (type === 'team') {
+      query.$or = [
+        { manager: userId },
+        { members: userId },
+        { team: { $in: req.user.teams?.map(t => t.team) || [] } }
+      ];
     }
 
     let projects;
@@ -81,15 +98,20 @@ router.get('/', authMiddleware, async (req, res) => {
         .sort({ createdAt: -1 })
         .limit(5)
         .populate('manager', 'name email')
-        .populate('members', 'name email');
+        .populate('members', 'name email')
+        .populate('team', 'name title');
     } else {
       // For all projects
       projects = await Project.find(query)
         .populate('manager', 'name email')
-        .populate('members', 'name email');
+        .populate('members', 'name email')
+        .populate('team', 'name title');
     }
 
-    console.log(`Found ${projects.length} projects (recent: ${isRecent}, status: ${status})`);
+    // TODO: Only allow team leads to create/edit/delete team projects & tasks
+    // TODO: Add analytics for task count per team/sub-team
+
+    console.log(`Found ${projects.length} projects (recent: ${isRecent}, status: ${status}, type: ${type})`);
     res.status(200).json(projects);
   } catch (error) {
     console.error('Error fetching projects:', error);
@@ -174,21 +196,39 @@ router.put('/:id', authMiddleware, roleMiddleware(['manager']), async (req, res)
 // Create a project
 router.post('/', authMiddleware, async (req, res) => {
   try {
-    const { title, description, deadline, members, color } = req.body;
-    
+    const { title, description, deadline, members, color, type, team } = req.body;
+    // Set the creator as the manager
+    const managerId = req.user.id;
+    let newMembers = Array.isArray(members) ? [...members] : [];
+    // Remove duplicate of manager if present
+    newMembers = newMembers.filter(m => m != managerId);
+    // Add manager to members
+    newMembers.unshift(managerId);
+
     const newProject = new Project({
       title,
       description,
       deadline,
-      manager: req.user.id, // Assigning the creator as manager
-      members: [...new Set([...members, req.user.id])], // Ensure manager is also a member
+      manager: managerId, // Assigning the creator as manager
+      members: newMembers, // Ensure manager is also a member
       color: color || projectColors[Math.floor(Math.random() * projectColors.length)], // Use provided color or random if not provided
+      type: type || 'personal',
+      team: type === 'team' ? team : undefined,
+      createdBy: managerId, // <-- Fix: required field
     });
 
     await newProject.save();
 
+    // If this is a team project, add the project to the team's projects array
+    if ((type === 'team' || req.body.type === 'team') && (team || req.body.team)) {
+      const teamId = team || req.body.team;
+      await require('../models/teamModel').findByIdAndUpdate(teamId, {
+        $push: { projects: newProject._id }
+      });
+    }
+
     // Send notifications to assigned users
-    members.forEach(async (userId) => {
+    newMembers.forEach(async (userId) => {
       const notification = new Notification({
         user: userId,
         type: 'project',

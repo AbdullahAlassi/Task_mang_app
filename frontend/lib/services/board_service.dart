@@ -5,9 +5,9 @@ import '../models/board_model.dart';
 
 class BoardService {
   // Update the baseUrl to match your actual backend URL
+  //static const String baseUrl ='http://10.0.2.2:3000/api'; // For Android emulator
   static const String baseUrl =
-      'http://10.0.2.2:3000/api'; // For Android emulator
-  // static const String baseUrl = 'http://localhost:3000/api'; // For iOS simulator
+      'http://localhost:3003/api'; // For iOS simulator
   // static const String baseUrl = 'http://YOUR_ACTUAL_IP:3000/api'; // For physical device
 
   // Get token from shared preferences
@@ -299,6 +299,57 @@ class BoardService {
       }
     } catch (e) {
       throw Exception('Failed to get board details: $e');
+    }
+  }
+
+  Future<void> updateBoardPositions(
+      String projectId, List<String> boardIds) async {
+    try {
+      print('=== Updating Board Positions Debug ===');
+      print('Project ID: $projectId');
+      print('Board IDs: $boardIds');
+
+      final token = await _getToken();
+      if (token == null) {
+        throw Exception('No authentication token found');
+      }
+
+      print(
+          'Request URL: $baseUrl/boards/projects/$projectId/boards/positions');
+      print('Request Headers: ${{
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      }}');
+      print('Request Body: ${jsonEncode({'boardIds': boardIds})}');
+
+      final response = await http.put(
+        Uri.parse('$baseUrl/boards/projects/$projectId/boards/positions'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'boardIds': boardIds}),
+      );
+
+      print('Response Status Code: ${response.statusCode}');
+      print('Response Body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        print('Board positions updated successfully');
+        return;
+      } else if (response.statusCode == 400) {
+        final errorData = jsonDecode(response.body);
+        throw Exception(
+            errorData['message'] ?? 'Invalid request: ${response.body}');
+      } else {
+        final errorData = jsonDecode(response.body);
+        throw Exception(
+            'Failed to update board positions: ${errorData['message'] ?? response.statusCode}\n'
+            'Details: ${errorData['details'] ?? 'No additional details available'}');
+      }
+    } catch (e) {
+      print('Error updating board positions: $e');
+      rethrow;
     }
   }
 }

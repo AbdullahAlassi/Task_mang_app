@@ -1,6 +1,7 @@
 class ApiConfig {
   // Use 10.0.2.2 for Android emulator to access host machine's localhost
-  static const String baseUrl = 'http://10.0.2.2:3000/api';
+  //static const String baseUrl = 'http://10.0.2.2:3000/api';
+  static const String baseUrl = 'http://localhost:3003/api';
 
   // API Endpoints
   static const String loginEndpoint = '/auth/login';

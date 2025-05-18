@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:frontend/screens/notifications/notifications_screen.dart';
+import 'package:frontend/screens/teams/team_hierarchy_screen.dart';
 import 'package:syncfusion_flutter_calendar/calendar.dart';
 import 'package:intl/intl.dart';
 import '../../config/app_colors.dart';
-import '../../models/project_model.dart';
-import '../../models/task_model.dart';
-import '../../services/project_service.dart';
-import '../../services/task_service.dart';
+import '../../services/calendar_service.dart';
 import '../../widgets/bottom_navigation.dart';
 import '../profile/profile_screen.dart';
 import '../tasks/task_detail_screen.dart';
@@ -21,70 +20,100 @@ class CalendarScreen extends StatefulWidget {
 }
 
 class _CalendarScreenState extends State<CalendarScreen> {
-  final ProjectService _projectService = ProjectService();
-  final TaskService _taskService = TaskService();
+  final CalendarService _calendarService = CalendarService();
   bool _isLoading = true;
-  List<Project> _projects = [];
-  List<Task> _tasks = [];
+  List<CalendarEvent> _events = [];
   CalendarView _currentView = CalendarView.month;
+  String _currentMode = 'month'; // 'day', 'week', 'month'
   int _currentNavIndex = 2; // Calendar tab selected
-  DateTime _selectedDate = DateTime.now(); // Add selected date
+  DateTime _selectedDate = DateTime.now();
+  DateTime _visibleStartDate = DateTime.now();
+  DateTime _visibleEndDate = DateTime.now();
+  bool _isViewChanging = false;
+  final GlobalKey<State<StatefulWidget>> _calendarKey = GlobalKey();
 
   @override
   void initState() {
     super.initState();
     print('📅 CalendarScreen: Initializing...');
-    print('📅 Current Navigation Index: $_currentNavIndex');
-    _loadData();
+    _loadEvents();
   }
 
-  Future<void> _loadData() async {
-    print('📅 CalendarScreen: Loading data...');
+  void _updateVisibleDatesForView() {
+    // Helper to update _visibleStartDate and _visibleEndDate based on _currentView and _selectedDate
+    switch (_currentView) {
+      case CalendarView.day:
+        _visibleStartDate = DateTime(
+            _selectedDate.year, _selectedDate.month, _selectedDate.day);
+        _visibleEndDate = DateTime(_selectedDate.year, _selectedDate.month,
+            _selectedDate.day, 23, 59, 59);
+        break;
+      case CalendarView.week:
+        _visibleStartDate =
+            _selectedDate.subtract(Duration(days: _selectedDate.weekday - 1));
+        _visibleEndDate = _visibleStartDate
+            .add(const Duration(days: 6, hours: 23, minutes: 59, seconds: 59));
+        break;
+      case CalendarView.month:
+      default:
+        _visibleStartDate =
+            DateTime(_selectedDate.year, _selectedDate.month, 1);
+        _visibleEndDate = DateTime(
+            _selectedDate.year, _selectedDate.month + 1, 0, 23, 59, 59);
+        break;
+    }
+    print('🔄 _updateVisibleDatesForView:');
+    print('  _currentView: $_currentView');
+    print('  _selectedDate: $_selectedDate');
+    print('  _visibleStartDate: $_visibleStartDate');
+    print('  _visibleEndDate: $_visibleEndDate');
+  }
+
+  Future<void> _loadEvents() async {
+    if (_isViewChanging) return;
+    print('📅 CalendarScreen: Loading events...');
+    if (!mounted) return;
     setState(() {
       _isLoading = true;
     });
-
+    // Always recalculate date range based on _currentView and _selectedDate
+    _updateVisibleDatesForView();
+    final startDate = _visibleStartDate;
+    final endDate = _visibleEndDate;
+    print('📅 Fetching events for date range:');
+    print('Start: ${startDate.toIso8601String()}');
+    print('End: ${endDate.toIso8601String()}');
     try {
-      print('📅 Fetching projects...');
-      final projects = await _projectService.getAllProjects();
-      print('📅 Fetched ${projects.length} projects');
-
-      print('📅 Fetching tasks...');
-      List<Task> tasks = [];
-      try {
-        tasks = await _taskService.getAllTasks();
-        print('📅 Fetched ${tasks.length} tasks');
-
-        // Filter out tasks without deadlines
-        tasks = tasks.where((task) => task.deadline != null).toList();
-        print('📅 Found ${tasks.length} tasks with deadlines');
-      } catch (e) {
-        print('⚠️ Warning: Failed to load tasks: $e');
-        // Continue with empty tasks list
+      final events = await _calendarService.getEvents(startDate, endDate);
+      print('📅 Fetched ${events.length} events');
+      for (final e in events) {
+        print('  - ${e.title} (${e.start} to ${e.end})');
       }
-
+      if (!mounted) return;
       setState(() {
-        _projects = projects;
-        _tasks = tasks;
+        _events = events;
         _isLoading = false;
+        _isViewChanging = false;
       });
-      print('📅 Data loaded successfully');
+      print('📅 Events loaded successfully');
     } catch (e, stackTrace) {
-      print('❌ Error loading data:');
+      print('❌ Error loading events:');
       print('Error message: $e');
       print('Stack trace:');
       print(stackTrace);
+      if (!mounted) return;
       setState(() {
         _isLoading = false;
+        _isViewChanging = false;
       });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to load data: $e'),
+            content: Text('Failed to load events: $e'),
             duration: const Duration(seconds: 5),
             action: SnackBarAction(
               label: 'Retry',
-              onPressed: _loadData,
+              onPressed: _loadEvents,
             ),
           ),
         );
@@ -94,71 +123,23 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
   List<Appointment> _getCalendarAppointments() {
     print('📅 Generating calendar appointments...');
-    final appointments = <Appointment>[];
-
-    // Add project deadlines
-    for (final project in _projects) {
-      if (project.deadline != null) {
-        print(
-            '📅 Adding project deadline: ${project.title} - ${project.deadline}');
-        appointments.add(
-          Appointment(
-            startTime: project.deadline!,
-            endTime: project.deadline!.add(const Duration(hours: 1)),
-            subject: '${project.title} (Project)',
-            color: Color(int.parse(project.color.replaceAll('#', '0xFF'))),
-            id: 'project_${project.id}',
-            isAllDay: false, // Ensure it's not an all-day event
-          ),
-        );
-      }
-    }
-
-    // Add task deadlines
-    for (final task in _tasks) {
-      if (task.deadline != null) {
-        print('📅 Adding task deadline: ${task.title} - ${task.deadline}');
-        // Find the project for this task
-        final project = _projects.firstWhere(
-          (p) => p.id == task.projectId,
-          orElse: () => _projects.first,
-        );
-
-        // Use project color with 0.7 opacity for tasks
-        final projectColor =
-            Color(int.parse(project.color.replaceAll('#', '0xFF')));
-        final taskColor = Color.fromRGBO(
-          projectColor.red,
-          projectColor.green,
-          projectColor.blue,
-          0.7,
-        );
-
-        appointments.add(
-          Appointment(
-            startTime: task.deadline!,
-            endTime: task.deadline!.add(const Duration(hours: 1)),
-            subject: task.title,
-            color: taskColor,
-            id: 'task_${task.id}',
-            isAllDay: false, // Ensure it's not an all-day event
-          ),
-        );
-      }
-    }
-
-    print('📅 Generated ${appointments.length} total appointments');
-    return appointments;
+    return _events.map((event) {
+      final color = Color(int.parse(event.color.replaceAll('#', '0xFF')));
+      return Appointment(
+        startTime: event.start,
+        endTime: event.end,
+        subject: event.title,
+        color: event.type == 'task' ? color.withOpacity(0.7) : color,
+        id: event.id,
+        isAllDay: false,
+        notes: event.projectTitle,
+      );
+    }).toList();
   }
 
   void _handleNavigation(int index) {
     print('📅 Navigation requested to index: $index');
-    print('📅 Current navigation index: $_currentNavIndex');
-
-    if (index == _currentNavIndex) {
-      print('📅 Already on this screen, ignoring navigation');
-      return;
-    }
+    if (index == _currentNavIndex) return;
 
     setState(() {
       _currentNavIndex = index;
@@ -166,122 +147,33 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
     switch (index) {
       case 0:
-        print('📅 Navigating to Dashboard');
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (context) => const DashboardScreen()),
         );
         break;
       case 1:
-        print('📅 Navigating to Projects');
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (context) => const ProjectsScreen()),
         );
         break;
       case 2:
-        print('📅 Already on Calendar');
+        // Already on Calendar
         break;
       case 3:
-        print('📅 Notifications screen requested');
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Notifications screen coming soon')),
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const NotificationsScreen()),
         );
         break;
     }
   }
 
-  void _showCreateOptions() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: AppColors.cardColor,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (context) {
-        return Padding(
-          padding: const EdgeInsets.symmetric(vertical: 20.0),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text(
-                'Create New',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.textColor,
-                ),
-              ),
-              const SizedBox(height: 20),
-              ListTile(
-                leading: const Icon(Icons.task, color: AppColors.primaryColor),
-                title: const Text('New Task',
-                    style: TextStyle(color: AppColors.textColor)),
-                onTap: () {
-                  Navigator.pop(context);
-                  // Show project selection dialog for the task
-                  _showProjectSelectionDialog();
-                },
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  void _showProjectSelectionDialog() {
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          backgroundColor: AppColors.cardColor,
-          title: const Text('Select Project',
-              style: TextStyle(color: AppColors.textColor)),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: ListView.builder(
-              shrinkWrap: true,
-              itemCount: _projects.length,
-              itemBuilder: (context, index) {
-                final project = _projects[index];
-                return ListTile(
-                  title: Text(project.title,
-                      style: const TextStyle(color: AppColors.textColor)),
-                  onTap: () {
-                    Navigator.pop(context);
-                    // Navigate to create task screen
-                    Navigator.pushNamed(
-                      context,
-                      '/create-task',
-                      arguments: {
-                        'projectId': project.id,
-                        'boardId': project.boardIds.isNotEmpty
-                            ? project.boardIds.first
-                            : 'default',
-                      },
-                    ).then((_) => _loadData());
-                  },
-                );
-              },
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
   void _handleCalendarTap(CalendarTapDetails details) {
-    print('📅 Calendar tapped: ${details.targetElement}');
-
     if (details.targetElement == CalendarElement.appointment) {
-      final String appointmentId = details.appointments![0].id as String;
+      final appointment = details.appointments![0];
+      final String appointmentId = appointment.id as String;
       final String type = appointmentId.split('_')[0];
       final String id = appointmentId.split('_')[1];
 
@@ -290,58 +182,63 @@ class _CalendarScreenState extends State<CalendarScreen> {
       print('ID: $id');
 
       if (type == 'task') {
-        print('📅 Navigating to task details');
         Navigator.push(
           context,
           MaterialPageRoute(
             builder: (context) => TaskDetailScreen(taskId: id),
           ),
-        ).then((_) {
-          print('📅 Returning from task details, refreshing data');
-          _loadData();
-        });
+        ).then((_) => _loadEvents());
       } else if (type == 'project') {
-        print('📅 Navigating to project details');
         Navigator.push(
           context,
           MaterialPageRoute(
             builder: (context) => ProjectDetailScreen(projectId: id),
           ),
-        ).then((_) {
-          print('📅 Returning from project details, refreshing data');
-          _loadData();
-        });
+        ).then((_) => _loadEvents());
       }
+    } else if (details.targetElement == CalendarElement.calendarCell &&
+        details.date != null) {
+      setState(() {
+        _selectedDate = details.date!;
+      });
     }
   }
 
   void _handleViewChanged(ViewChangedDetails details) {
-    print('📅 View changed to: ${details.visibleDates}');
-    print('📅 Current view type: $_currentView');
-    _selectedDate = details.visibleDates.first;
+    print('📅 View changed:');
+    print('Visible dates: ${details.visibleDates}');
+    print('Current view: $_currentView');
+    if (_isViewChanging) return;
+    _isViewChanging = true;
+    // Update _selectedDate, _visibleStartDate, _visibleEndDate for all views
+    if (details.visibleDates.isNotEmpty) {
+      _selectedDate = details.visibleDates.first;
+      _updateVisibleDatesForView();
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _loadEvents();
+      }
+    });
   }
 
-  Widget _buildViewButton(String label, CalendarView view) {
-    final isSelected = _currentView == view;
-    print('📅 Building view button: $label');
-    print('📅 Is selected: $isSelected');
-    print('📅 Current view: $_currentView');
-    print('📅 Target view: $view');
-
+  Widget _buildViewButton(String label, String mode) {
+    final isSelected = _currentMode == mode;
     return TextButton(
       onPressed: () {
-        print('📅 View button pressed: $label');
-        print('📅 Current view before change: $_currentView');
-        print('📅 Target view: $view');
-
-        if (_currentView != view) {
-          print('📅 View is different, updating state...');
+        if (_currentMode != mode) {
           setState(() {
-            _currentView = view;
+            _currentMode = mode;
+            _currentView = mode == 'day'
+                ? CalendarView.day
+                : mode == 'week'
+                    ? CalendarView.week
+                    : CalendarView.month;
+            _selectedDate = DateTime.now();
+            _updateVisibleDatesForView();
+            _calendarKey.currentState?.setState(() {});
           });
-          print('📅 View updated to: $_currentView');
-        } else {
-          print('📅 View is already set to: $view');
+          _loadEvents();
         }
       },
       style: TextButton.styleFrom(
@@ -364,177 +261,177 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
   @override
   Widget build(BuildContext context) {
-    print('📅 Building CalendarScreen');
-    print('📅 Current view: $_currentView');
-    print('📅 Loading state: $_isLoading');
-    print('📅 Projects count: ${_projects.length}');
-    print('📅 Tasks count: ${_tasks.length}');
-
     return Scaffold(
       backgroundColor: AppColors.backgroundColor,
       body: SafeArea(
-        child: Column(
-          children: [
-            // App Bar
-            Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  // Left side - Menu button
-                  IconButton(
-                    icon: const Icon(Icons.grid_view,
-                        color: AppColors.primaryColor),
-                    onPressed: () {
-                      // Open drawer or menu
-                    },
-                  ),
-
-                  // Center - Title
-                  const Text(
-                    'Calendar',
-                    style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.textColor,
-                    ),
-                  ),
-
-                  // Right side - Profile button
-                  Container(
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border:
-                          Border.all(color: AppColors.primaryColor, width: 2),
-                    ),
-                    child: IconButton(
-                      icon: const Icon(Icons.person,
+        child: SingleChildScrollView(
+          child: Column(
+            children: [
+              // App Bar
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.workspace_premium_outlined,
                           color: AppColors.primaryColor),
                       onPressed: () {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (context) => const ProfileScreen(),
-                          ),
+                              builder: (context) =>
+                                  const TeamHierarchyScreen()),
                         );
                       },
                     ),
-                  ),
-                ],
-              ),
-            ),
-
-            // View Selection Buttons
-            Container(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              color: AppColors.cardColor,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  _buildViewButton('Day', CalendarView.day),
-                  _buildViewButton('Week', CalendarView.week),
-                  _buildViewButton('Month', CalendarView.month),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 16),
-
-            // Calendar
-            Expanded(
-              child: _isLoading
-                  ? const Center(child: CircularProgressIndicator())
-                  : SfCalendar(
-                      key: ValueKey(_currentView),
-                      view: _currentView,
-                      dataSource:
-                          _CalendarDataSource(_getCalendarAppointments()),
-                      onTap: _handleCalendarTap,
-                      onViewChanged: _handleViewChanged,
-                      monthViewSettings: const MonthViewSettings(
-                        appointmentDisplayMode:
-                            MonthAppointmentDisplayMode.appointment,
-                        showAgenda: true,
-                        navigationDirection: MonthNavigationDirection.vertical,
-                        appointmentDisplayCount: 3,
+                    const Text(
+                      'Calendar',
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.textColor,
                       ),
-                      timeSlotViewSettings: const TimeSlotViewSettings(
-                        startHour: 8,
-                        endHour: 20,
-                        timeInterval: Duration(minutes: 30),
-                        timeIntervalHeight: 50,
-                        dayFormat: 'EEE',
-                        dateFormat: 'd',
-                        timeFormat: 'HH:mm',
-                        timeRulerSize: 60,
-                      ),
-                      allowDragAndDrop: true,
-                      allowAppointmentResize: true,
-                      initialSelectedDate: _selectedDate,
-                      initialDisplayDate: _selectedDate,
-                      headerStyle: const CalendarHeaderStyle(
-                        textStyle: TextStyle(
-                          color: AppColors.textColor,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      viewHeaderStyle: const ViewHeaderStyle(
-                        backgroundColor: AppColors.cardColor,
-                        dayTextStyle: TextStyle(color: AppColors.textColor),
-                        dateTextStyle: TextStyle(color: AppColors.textColor),
-                      ),
-                      backgroundColor: AppColors.backgroundColor,
-                      todayHighlightColor: AppColors.primaryColor,
-                      selectionDecoration: BoxDecoration(
-                        color: AppColors.primaryColor.withOpacity(0.1),
-                        border: Border.all(color: AppColors.primaryColor),
-                      ),
-                      showCurrentTimeIndicator: true,
-                      showWeekNumber: true,
-                      showNavigationArrow: true,
-                      showDatePickerButton: true,
-                      onDragEnd: (AppointmentDragEndDetails details) async {
-                        final appointment = details.appointment! as Appointment;
-                        final String appointmentId = appointment.id as String;
-                        final String type = appointmentId.split('_')[0];
-                        final String id = appointmentId.split('_')[1];
-
-                        try {
-                          if (type == 'task') {
-                            print(
-                                '📅 Updating task deadline: $id to ${appointment.startTime}');
-                            await _taskService.updateTaskDeadline(
-                                id, appointment.startTime);
-                          } else if (type == 'project') {
-                            print(
-                                '📅 Updating project deadline: $id to ${appointment.startTime}');
-                            await _projectService.updateProject(id, {
-                              'deadline':
-                                  appointment.startTime.toIso8601String()
-                            });
-                          }
-                          print('📅 Deadline updated successfully');
-                          _loadData(); // Refresh data
-                        } catch (e) {
-                          print('❌ Error updating deadline: $e');
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('Failed to update deadline: $e'),
-                                duration: const Duration(seconds: 5),
-                                action: SnackBarAction(
-                                  label: 'Retry',
-                                  onPressed: () => _loadData(),
-                                ),
-                              ),
-                            );
-                          }
-                        }
-                      },
                     ),
-            ),
-          ],
+                    Container(
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border:
+                            Border.all(color: AppColors.primaryColor, width: 2),
+                      ),
+                      child: IconButton(
+                        icon: const Icon(Icons.person,
+                            color: AppColors.primaryColor),
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const ProfileScreen(),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // View Selection Buttons
+              Container(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                color: AppColors.cardColor,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    _buildViewButton('Day', 'day'),
+                    _buildViewButton('Week', 'week'),
+                    _buildViewButton('Month', 'month'),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 16),
+
+              // Calendar
+              SizedBox(
+                height: 600, // or MediaQuery.of(context).size.height * 0.7
+                child: _isLoading
+                    ? const Center(child: CircularProgressIndicator())
+                    : SfCalendar(
+                        key: ValueKey(_currentView),
+                        view: _currentView,
+                        dataSource:
+                            _CalendarDataSource(_getCalendarAppointments()),
+                        onTap: _handleCalendarTap,
+                        onViewChanged: _handleViewChanged,
+                        monthViewSettings: const MonthViewSettings(
+                          appointmentDisplayMode:
+                              MonthAppointmentDisplayMode.appointment,
+                          showAgenda: true,
+                          navigationDirection:
+                              MonthNavigationDirection.vertical,
+                          appointmentDisplayCount: 3,
+                          agendaViewHeight: 200,
+                        ),
+                        timeSlotViewSettings: TimeSlotViewSettings(
+                          timeIntervalHeight: 60,
+                          startHour: 0,
+                          endHour: 24,
+                          timeInterval: const Duration(hours: 1),
+                        ),
+                        allowDragAndDrop: true,
+                        allowAppointmentResize: true,
+                        initialSelectedDate: _selectedDate,
+                        initialDisplayDate: _selectedDate,
+                        headerStyle: const CalendarHeaderStyle(
+                          textStyle: TextStyle(
+                            color: AppColors.textColor,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        viewHeaderStyle: const ViewHeaderStyle(
+                          backgroundColor: AppColors.cardColor,
+                          dayTextStyle: TextStyle(color: AppColors.textColor),
+                          dateTextStyle: TextStyle(color: AppColors.textColor),
+                        ),
+                        backgroundColor: AppColors.backgroundColor,
+                        todayHighlightColor: AppColors.primaryColor,
+                        selectionDecoration: BoxDecoration(
+                          color: AppColors.primaryColor.withOpacity(0.1),
+                          border: Border.all(color: AppColors.primaryColor),
+                        ),
+                        showCurrentTimeIndicator: true,
+                        showWeekNumber: true,
+                        showNavigationArrow: true,
+                        showDatePickerButton: true,
+                        appointmentBuilder: (context, details) {
+                          final appointment = details.appointments.first;
+                          final String appointmentId = appointment.id as String;
+                          final String type = appointmentId.split('_')[0];
+                          final String projectTitle =
+                              appointment.notes as String? ?? '';
+
+                          return Container(
+                            decoration: BoxDecoration(
+                              color: appointment.color,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.all(4.0),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    appointment.subject,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  if (type == 'task' && projectTitle.isNotEmpty)
+                                    Text(
+                                      projectTitle,
+                                      style: const TextStyle(
+                                        color: Colors.white70,
+                                        fontSize: 10,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
         ),
       ),
       bottomNavigationBar: BottomNavigation(

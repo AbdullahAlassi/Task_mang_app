@@ -267,4 +267,21 @@ class TeamService {
       rethrow;
     }
   }
+
+  Future<int> getTeamTaskCount(String teamId) async {
+    final token = await _getToken();
+    final response = await http.get(
+      Uri.parse('$baseUrl/teams/$teamId/taskCount'),
+      headers: {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      },
+    );
+    if (response.statusCode == 200) {
+      final data = json.decode(response.body);
+      return data['count'] ?? 0;
+    } else {
+      throw Exception('Failed to fetch team task count');
+    }
+  }
 }

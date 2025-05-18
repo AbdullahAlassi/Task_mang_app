@@ -3,8 +3,10 @@ import 'package:intl/intl.dart';
 import '../../../config/app_colors.dart';
 import '../../../models/task_model.dart';
 import '../../../models/board_model.dart';
+import '../../../models/project_model.dart';
 import '../../../services/task_service.dart';
 import '../../../services/board_service.dart';
+import '../../../services/project_service.dart';
 import 'create_task_screen.dart';
 
 class TaskDetailScreen extends StatefulWidget {
@@ -22,9 +24,11 @@ class TaskDetailScreen extends StatefulWidget {
 class _TaskDetailScreenState extends State<TaskDetailScreen> {
   final TaskService _taskService = TaskService();
   final BoardService _boardService = BoardService();
+  final ProjectService _projectService = ProjectService();
   bool _isLoading = true;
   Task? _task;
   Board? _board;
+  Project? _project;
   String? _error;
 
   @override
@@ -49,9 +53,14 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       final board = await _boardService.getBoardDetails(task.boardId);
       if (!mounted) return;
 
+      // Fetch project details
+      final project = await _projectService.getProjectDetails(task.projectId);
+      if (!mounted) return;
+
       setState(() {
         _task = task;
         _board = board;
+        _project = project;
         _isLoading = false;
       });
     } catch (e) {
@@ -69,7 +78,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     return Scaffold(
       backgroundColor: AppColors.backgroundColor,
       appBar: AppBar(
-        backgroundColor: AppColors.backgroundColor,
+        backgroundColor: Colors.transparent,
         elevation: 0,
         title:
             Text(_isLoading ? 'Task Details' : _task?.title ?? 'Task Details'),
@@ -81,7 +90,37 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
             ),
         ],
       ),
-      body: _buildBody(),
+      body: Column(
+        children: [
+          if (!_isLoading && _task != null && _project != null)
+            _buildGradientBanner(),
+          Expanded(
+            child: _buildBody(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGradientBanner() {
+    // Get task color, default to status color if not set
+    final taskColor = _task!.color ?? _task!.getStatusColor();
+
+    // Get project color, default to primary color if not set
+    final projectColor = _project!.getBannerColor();
+
+    return Container(
+      height: 120,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            taskColor,
+            projectColor,
+          ],
+        ),
+      ),
     );
   }
 
@@ -155,7 +194,6 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
           const SizedBox(height: 24),
           _buildDetails(),
           const SizedBox(height: 24),
-          _buildActions(),
         ],
       ),
     );
@@ -227,6 +265,16 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
           ),
         ),
         const SizedBox(height: 8),
+        _buildAssignedMembersField(),
+        const SizedBox(height: 8),
+        _buildDetailItem(
+          'Priority',
+          _task!.priority.name,
+          Icons.flag,
+          color: _task!.priority.color,
+          onTap: _showPriorityPicker,
+        ),
+        const SizedBox(height: 8),
         _buildDetailItem(
           'Deadline',
           _task!.deadline != null
@@ -250,7 +298,8 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     );
   }
 
-  Widget _buildDetailItem(String label, String value, IconData icon) {
+  Widget _buildAssignedMembersField() {
+    final users = _task!.assignedUsers;
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -258,79 +307,111 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: AppColors.primaryColor),
+          const Icon(Icons.people, color: AppColors.primaryColor),
           const SizedBox(width: 12),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                label,
-                style: const TextStyle(
-                  fontSize: 14,
-                  color: AppColors.secondaryTextColor,
-                ),
-              ),
-              Text(
-                value,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.textColor,
-                ),
-              ),
-            ],
+          Expanded(
+            child: users == null || users.isEmpty
+                ? const Text('No members assigned',
+                    style: TextStyle(color: AppColors.secondaryTextColor))
+                : Wrap(
+                    spacing: 8,
+                    runSpacing: 4,
+                    children: users.map((user) {
+                      final initials = (user.name.isNotEmpty)
+                          ? user.name
+                              .trim()
+                              .split(' ')
+                              .map((e) => e.isNotEmpty ? e[0] : '')
+                              .take(2)
+                              .join()
+                              .toUpperCase()
+                          : '';
+                      return Chip(
+                        avatar: CircleAvatar(
+                          backgroundColor:
+                              AppColors.primaryColor.withOpacity(0.2),
+                          child: Text(initials,
+                              style: const TextStyle(
+                                  color: AppColors.primaryColor, fontSize: 12)),
+                        ),
+                        label: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(user.name,
+                                style: const TextStyle(
+                                    color: AppColors.textColor,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 13)),
+                            Text(user.email,
+                                style: const TextStyle(
+                                    color: AppColors.secondaryTextColor,
+                                    fontSize: 11)),
+                          ],
+                        ),
+                        backgroundColor: Colors.transparent,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          side: BorderSide(
+                              color: AppColors.primaryColor.withOpacity(0.2)),
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 2),
+                      );
+                    }).toList(),
+                  ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildActions() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16.0),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: [
-          Expanded(
-            child: _buildActionButton(
-              'Edit',
-              Icons.edit,
-              () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => CreateTaskScreen(
-                      projectId: _task!.boardId,
-                      boardId: _task!.boardId,
-                      taskId: _task!.id,
+  Widget _buildDetailItem(String label, String value, IconData icon,
+      {Color? color, VoidCallback? onTap}) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: AppColors.cardColor,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, color: color ?? AppColors.primaryColor),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      color: AppColors.secondaryTextColor,
                     ),
                   ),
-                ).then((_) => _loadTaskDetails());
-              },
+                  Text(
+                    value,
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: color ?? AppColors.textColor,
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: _buildActionButton(
-              _task!.isCompleted ? 'Mark Incomplete' : 'Mark Complete',
-              _task!.isCompleted ? Icons.close : Icons.check,
-              () {
-                _updateTaskStatus(!_task!.isCompleted);
-              },
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: _buildActionButton(
-              'Delete',
-              Icons.delete,
-              _confirmDeleteTask,
-              color: Colors.red,
-            ),
-          ),
-        ],
+            if (onTap != null)
+              const Icon(
+                Icons.arrow_forward_ios,
+                size: 16,
+                color: AppColors.secondaryTextColor,
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -479,6 +560,87 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  void _showPriorityPicker() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.cardColor,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) {
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 20.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Select Priority',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.textColor,
+                ),
+              ),
+              const SizedBox(height: 16),
+              ...TaskPriority.values.map((priority) {
+                return ListTile(
+                  leading: Container(
+                    width: 24,
+                    height: 24,
+                    decoration: BoxDecoration(
+                      color: priority.color.withOpacity(0.2),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Center(
+                      child: Icon(
+                        Icons.flag,
+                        size: 16,
+                        color: priority.color,
+                      ),
+                    ),
+                  ),
+                  title: Text(
+                    priority.name,
+                    style: TextStyle(
+                      color: priority.color,
+                      fontWeight: _task!.priority == priority
+                          ? FontWeight.bold
+                          : FontWeight.normal,
+                    ),
+                  ),
+                  trailing: _task!.priority == priority
+                      ? const Icon(
+                          Icons.check,
+                          color: AppColors.primaryColor,
+                        )
+                      : null,
+                  onTap: () async {
+                    Navigator.pop(context);
+                    try {
+                      await _taskService.updateTask(
+                        _task!.id,
+                        {'priority': priority.name},
+                      );
+                      _loadTaskDetails();
+                    } catch (e) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Failed to update priority: $e'),
+                          ),
+                        );
+                      }
+                    }
+                  },
+                );
+              }).toList(),
+            ],
+          ),
+        );
+      },
     );
   }
 }

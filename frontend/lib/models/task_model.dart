@@ -1,5 +1,51 @@
 import 'package:flutter/material.dart';
 import '../config/app_colors.dart';
+import '../models/user_model.dart';
+
+enum TaskPriority { low, medium, high, urgent }
+
+extension TaskPriorityExtension on TaskPriority {
+  String get name {
+    switch (this) {
+      case TaskPriority.low:
+        return 'Low';
+      case TaskPriority.medium:
+        return 'Medium';
+      case TaskPriority.high:
+        return 'High';
+      case TaskPriority.urgent:
+        return 'Urgent';
+    }
+  }
+
+  Color get color {
+    switch (this) {
+      case TaskPriority.low:
+        return Colors.green;
+      case TaskPriority.medium:
+        return Colors.orange;
+      case TaskPriority.high:
+        return Colors.red;
+      case TaskPriority.urgent:
+        return Colors.purple;
+    }
+  }
+
+  static TaskPriority fromString(String priority) {
+    switch (priority.toLowerCase()) {
+      case 'low':
+        return TaskPriority.low;
+      case 'medium':
+        return TaskPriority.medium;
+      case 'high':
+        return TaskPriority.high;
+      case 'urgent':
+        return TaskPriority.urgent;
+      default:
+        return TaskPriority.medium;
+    }
+  }
+}
 
 class Task {
   final String id;
@@ -12,6 +58,8 @@ class Task {
   final List<String> assignedTo;
   final Color? color;
   final String projectId;
+  final TaskPriority priority;
+  final List<User>? assignedUsers;
 
   Task({
     required this.id,
@@ -24,6 +72,8 @@ class Task {
     required this.assignedTo,
     this.color,
     required this.projectId,
+    this.priority = TaskPriority.medium,
+    this.assignedUsers,
   });
 
   factory Task.fromJson(Map<String, dynamic> json) {
@@ -73,6 +123,32 @@ class Task {
       }
     }
 
+    // Handle priority parsing with better null safety
+    TaskPriority priority;
+    try {
+      if (json['priority'] != null) {
+        priority = TaskPriorityExtension.fromString(json['priority']);
+      } else {
+        // Default to medium priority if not specified
+        priority = TaskPriority.medium;
+      }
+    } catch (e) {
+      print('Error parsing priority: $e');
+      priority = TaskPriority.medium;
+    }
+
+    // Parse assigned users if available
+    List<User>? assignedUsers;
+    if (json['assignedTo'] != null && json['assignedTo'] is List) {
+      final first = (json['assignedTo'] as List).isNotEmpty
+          ? (json['assignedTo'] as List).first
+          : null;
+      if (first != null && first is Map) {
+        assignedUsers =
+            (json['assignedTo'] as List).map((a) => User.fromJson(a)).toList();
+      }
+    }
+
     return Task(
       id: json['_id'] ?? json['id'],
       title: json['title'],
@@ -92,6 +168,8 @@ class Task {
           : [],
       color: color,
       projectId: projectId,
+      priority: priority,
+      assignedUsers: assignedUsers,
     );
   }
 
@@ -108,6 +186,7 @@ class Task {
           ? '#${color!.value.toRadixString(16).substring(2)}'
           : null,
       'project': projectId,
+      'priority': priority.name,
     };
   }
 
@@ -122,6 +201,8 @@ class Task {
     List<String>? assignedTo,
     Color? color,
     String? projectId,
+    TaskPriority? priority,
+    List<User>? assignedUsers,
   }) {
     return Task(
       id: id ?? this.id,
@@ -134,6 +215,8 @@ class Task {
       assignedTo: assignedTo ?? this.assignedTo,
       color: color ?? this.color,
       projectId: projectId ?? this.projectId,
+      priority: priority ?? this.priority,
+      assignedUsers: assignedUsers ?? this.assignedUsers,
     );
   }
 

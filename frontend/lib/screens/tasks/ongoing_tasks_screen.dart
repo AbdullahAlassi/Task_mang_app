@@ -13,17 +13,35 @@ class OngoingTasksScreen extends StatefulWidget {
   State<OngoingTasksScreen> createState() => _OngoingTasksScreenState();
 }
 
-class _OngoingTasksScreenState extends State<OngoingTasksScreen> {
+class _OngoingTasksScreenState extends State<OngoingTasksScreen>
+    with SingleTickerProviderStateMixin {
   final _taskService = TaskService();
   bool _isLoading = true;
   List<Task> _tasks = [];
   String _sortBy = 'deadline'; // 'deadline' or 'status'
   bool _showOverdueTasks = false;
+  late TabController _tabController;
+  String _selectedTab = 'personal'; // 'personal' or 'team'
 
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+    _tabController.addListener(() {
+      if (!_tabController.indexIsChanging) {
+        setState(() {
+          _selectedTab = _tabController.index == 0 ? 'personal' : 'team';
+        });
+        _loadTasks();
+      }
+    });
     _loadTasks();
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadTasks() async {
@@ -32,7 +50,10 @@ class _OngoingTasksScreenState extends State<OngoingTasksScreen> {
     });
 
     try {
-      final tasks = await _taskService.getOngoingTasks();
+      final tasks = _selectedTab == 'personal'
+          ? await _taskService.getPersonalTasks()
+          : await _taskService.getTeamTasks();
+
       setState(() {
         _tasks = tasks;
         _sortTasks();
@@ -81,6 +102,29 @@ class _OngoingTasksScreenState extends State<OngoingTasksScreen> {
         backgroundColor: AppColors.backgroundColor,
         elevation: 0,
         title: const Text('Ongoing Tasks'),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(48),
+          child: Container(
+            margin: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+            decoration: BoxDecoration(
+              color: AppColors.cardColor,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: TabBar(
+              controller: _tabController,
+              indicator: BoxDecoration(
+                color: AppColors.primaryColor,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              labelColor: Colors.white,
+              unselectedLabelColor: AppColors.textColor,
+              tabs: const [
+                Tab(text: 'My Tasks'),
+                Tab(text: 'Team Tasks'),
+              ],
+            ),
+          ),
+        ),
         actions: [
           // Sort button
           PopupMenuButton<String>(
@@ -130,9 +174,9 @@ class _OngoingTasksScreenState extends State<OngoingTasksScreen> {
                           const Icon(Icons.task_alt,
                               size: 64, color: Colors.grey),
                           const SizedBox(height: 16),
-                          const Text(
-                            'No ongoing tasks',
-                            style: TextStyle(
+                          Text(
+                            'No ${_selectedTab == 'personal' ? 'personal' : 'team'} tasks',
+                            style: const TextStyle(
                               fontSize: 18,
                               color: Colors.grey,
                             ),

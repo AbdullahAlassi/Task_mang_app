@@ -6,40 +6,51 @@ const authMiddleware = require('../middleware/auth');
 const { validateRequest, createTeamSchema } = require('../validators/validationSchemas');
 
 // Create a new team
-router.post('/', authMiddleware, validateRequest(createTeamSchema), async (req, res) => {
-  const { name, description, parent, members, department, type, metadata, settings } = req.body;
+router.post('/', authMiddleware, async (req, res) => {
+  const { name, description, type, parent } = req.body;
 
   try {
+    // Validate parent team if provided
+    if (parent) {
+      const parentTeam = await Team.findById(parent);
+      if (!parentTeam) {
+        return res.status(400).json({ error: 'Parent team not found' });
+      }
+    }
+
+    // Create new team with creator as manager and member
     const newTeam = new Team({
       name,
       description,
-      parent: parent || null,
-      members: members || [],
-      department,
       type,
-      metadata,
-      settings
+      manager: req.user.id,
+      members: [{ user: req.user.id }],
+      parent: parent || null,
+      children: []
     });
 
     await newTeam.save();
 
-    // If there's a parent team, add this team to its children
+    // If parent team exists, add this team to its children
     if (parent) {
       await Team.findByIdAndUpdate(parent, {
         $push: { children: newTeam._id }
       });
     }
 
-    // Update users' team memberships
-    if (members && members.length > 0) {
-      const userIds = members.map(m => m.user);
-      await User.updateMany(
-        { _id: { $in: userIds } },
-        { $push: { teams: { team: newTeam._id, role: 'member' } } }
-      );
-    }
+    // Update user's team memberships
+    await User.findByIdAndUpdate(req.user.id, {
+      $push: { teams: { team: newTeam._id, role: 'manager' } }
+    });
 
-    res.status(201).json(newTeam);
+    // Populate parent and children info in response
+    const populatedTeam = await Team.findById(newTeam._id)
+      .populate('parent', 'name')
+      .populate('children', 'name')
+      .populate('manager', 'name email')
+      .populate('members.user', 'name email');
+
+    res.status(201).json(populatedTeam);
   } catch (error) {
     console.error('Error creating team:', error);
     res.status(400).json({ error: error.message });
@@ -289,6 +300,32 @@ router.put('/:id/members/:userId/role', authMiddleware, async (req, res) => {
   } catch (error) {
     console.error('Error updating member role:', error);
     res.status(400).json({ error: error.message });
+  }
+});
+
+// Get total task count for a team (across all its projects)
+router.get('/:id/taskCount', authMiddleware, async (req, res) => {
+  try {
+    const teamId = req.params.id;
+    const Project = require('../models/projectModel');
+    const Board = require('../models/boardModel');
+    const Task = require('../models/taskModel');
+
+    // 1. Find all projects for this team
+    const projects = await Project.find({ team: teamId });
+    const projectIds = projects.map(p => p._id);
+
+    // 2. Find all boards for these projects
+    const boards = await Board.find({ project: { $in: projectIds } });
+    const boardIds = boards.map(b => b._id);
+
+    // 3. Count all tasks in these boards
+    const count = await Task.countDocuments({ board: { $in: boardIds } });
+
+    res.status(200).json({ count });
+  } catch (error) {
+    console.error('Error getting team task count:', error);
+    res.status(500).json({ error: error.message });
   }
 });
 

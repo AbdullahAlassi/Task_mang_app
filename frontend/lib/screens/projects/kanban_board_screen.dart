@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:drag_and_drop_lists/drag_and_drop_lists.dart';
 import '../../config/app_colors.dart';
 import '../../models/project_model.dart';
 import '../../models/board_model.dart';
@@ -8,6 +7,7 @@ import '../../models/task_model.dart';
 import '../../services/project_service.dart';
 import '../../services/board_service.dart';
 import '../../services/task_service.dart';
+import '../../widgets/reorderable_row.dart';
 import '../tasks/create_task_screen.dart';
 import '../boards/create_board_screen.dart';
 import '../boards/board_detail_screen.dart';
@@ -27,19 +27,25 @@ class KanbanBoardScreen extends StatefulWidget {
 }
 
 class _KanbanBoardScreenState extends State<KanbanBoardScreen> {
-  bool _isLoading = true;
+  final ProjectService _projectService = ProjectService();
+  final BoardService _boardService = BoardService();
+  final TaskService _taskService = TaskService();
   Project? _project;
   List<Board> _boards = [];
+  bool _isLoading = true;
+  final ScrollController _scrollController = ScrollController();
   bool _isManager = false;
-
-  final _projectService = ProjectService();
-  final _boardService = BoardService();
-  final _taskService = TaskService();
 
   @override
   void initState() {
     super.initState();
     _loadData();
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
   }
 
   Future<void> _checkIfManager() async {
@@ -424,177 +430,209 @@ class _KanbanBoardScreenState extends State<KanbanBoardScreen> {
     }
 
     return SingleChildScrollView(
+      controller: _scrollController,
       scrollDirection: Axis.horizontal,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: ReorderableRow(
+        scrollController: _scrollController,
+        onReorder: (oldIndex, newIndex) async {
+          setState(() {
+            // No need to adjust newIndex as we're handling the reordering directly
+            final board = _boards.removeAt(oldIndex);
+            _boards.insert(newIndex, board);
+          });
+
+          try {
+            // Update positions in the backend
+            await _boardService.updateBoardPositions(
+              widget.projectId,
+              _boards.map((board) => board.id).toList(),
+            );
+          } catch (e) {
+            // If the update fails, reload the data to restore the original order
+            _loadData();
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Failed to update board order: $e')),
+              );
+            }
+          }
+        },
         children: _boards.map((board) {
           return Container(
+            key: ValueKey(board.id),
             width: 300,
             margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
             decoration: BoxDecoration(
               color: const Color(0xFF1F222A),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: Column(
-              children: [
-                _buildBoardHeader(board),
-                const SizedBox(height: 8),
-                Expanded(
-                  child: DragTarget<Task>(
-                    onWillAccept: (task) => true,
-                    onAccept: (task) async {
-                      print('\n=== Task Drag Debug ===');
-                      print('Task ID: ${task.id}');
-                      print('Task Title: ${task.title}');
-                      print('Target Board ID: ${board.id}');
-                      print('Target Board Title: ${board.title}');
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(
+                minHeight: 100,
+                maxHeight: 700,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _buildBoardHeader(board),
+                  Expanded(
+                    child: DragTarget<Task>(
+                      onWillAccept: (task) => true,
+                      onAccept: (task) async {
+                        print('\n=== Task Drag Debug ===');
+                        print('Task ID: ${task.id}');
+                        print('Task Title: ${task.title}');
+                        print('Target Board ID: ${board.id}');
+                        print('Target Board Title: ${board.title}');
 
-                      // Find the old board
-                      final oldBoard = _boards.firstWhere(
-                        (b) => b.tasks.any((t) => t.id == task.id),
-                      );
-                      print('Source Board ID: ${oldBoard.id}');
-                      print('Source Board Title: ${oldBoard.title}');
-
-                      setState(() {
-                        // Remove task from old board
-                        oldBoard.tasks.removeWhere((t) => t.id == task.id);
-                        // Add task to new board
-                        board.tasks.add(task);
-                      });
-
-                      try {
-                        print('\n1. Updating task in backend...');
-                        // Update task's board and status in backend
-                        await _taskService.updateTask(
-                          task.id,
-                          {
-                            'board': board.id,
-                            'status': board.title,
-                          },
+                        // Find the old board
+                        final oldBoard = _boards.firstWhere(
+                          (b) => b.tasks.any((t) => t.id == task.id),
                         );
-                        print('Task updated successfully');
+                        print('Source Board ID: ${oldBoard.id}');
+                        print('Source Board Title: ${oldBoard.title}');
 
-                        print('\n2. Updating project status...');
-                        // Update project status
-                        await _projectService
-                            .updateProjectStatus(board.projectId);
-                        print('Project status updated successfully');
+                        setState(() {
+                          // Remove task from old board
+                          oldBoard.tasks.removeWhere((t) => t.id == task.id);
+                          // Add task to new board
+                          board.tasks.add(task);
+                        });
 
-                        print('\n3. Refreshing data...');
-                        _loadData(); // Refresh data
-                        print('Data refresh completed');
-                      } catch (e, stackTrace) {
-                        print('\nError during task drag:');
-                        print('Error message: $e');
-                        print('Stack trace:');
-                        print(stackTrace);
-
-                        _loadData(); // Refresh to ensure UI is in sync
-                        if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                                content: Text('Failed to update task: $e')),
+                        try {
+                          print('\n1. Updating task in backend...');
+                          // Update task's board and status in backend
+                          await _taskService.updateTask(
+                            task.id,
+                            {
+                              'board': board.id,
+                              'status': board.title,
+                            },
                           );
+                          print('Task updated successfully');
+
+                          print('\n2. Updating project status...');
+                          // Update project status
+                          await _projectService
+                              .updateProjectStatus(board.projectId);
+                          print('Project status updated successfully');
+
+                          print('\n3. Refreshing data...');
+                          _loadData(); // Refresh data
+                          print('Data refresh completed');
+                        } catch (e, stackTrace) {
+                          print('\nError during task drag:');
+                          print('Error message: $e');
+                          print('Stack trace:');
+                          print(stackTrace);
+
+                          _loadData(); // Refresh to ensure UI is in sync
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                  content: Text('Failed to update task: $e')),
+                            );
+                          }
                         }
-                      }
-                    },
-                    builder: (context, candidateData, rejectedData) {
-                      return ListView.builder(
-                        shrinkWrap: true,
-                        physics: const ClampingScrollPhysics(),
-                        itemCount: board.tasks.length,
-                        itemBuilder: (context, index) {
-                          return Draggable<Task>(
-                            data: board.tasks[index],
-                            feedback: Material(
-                              color: Colors.transparent,
-                              child: Container(
-                                width: 280,
+                      },
+                      builder: (context, candidateData, rejectedData) {
+                        return ListView.builder(
+                          shrinkWrap: true,
+                          physics: const ClampingScrollPhysics(),
+                          itemCount: board.tasks.length,
+                          itemBuilder: (context, index) {
+                            return Draggable<Task>(
+                              data: board.tasks[index],
+                              feedback: Material(
+                                color: Colors.transparent,
+                                child: Container(
+                                  width: 280,
+                                  child:
+                                      _buildTaskCard(board.tasks[index], board),
+                                ),
+                              ),
+                              childWhenDragging: Opacity(
+                                opacity: 0.5,
                                 child:
                                     _buildTaskCard(board.tasks[index], board),
                               ),
-                            ),
-                            childWhenDragging: Opacity(
-                              opacity: 0.5,
                               child: _buildTaskCard(board.tasks[index], board),
-                            ),
-                            child: _buildTaskCard(board.tasks[index], board),
-                          );
-                        },
-                      );
-                    },
-                  ),
-                ),
-                if (board.tasks.isEmpty)
-                  DragTarget<Task>(
-                    onWillAccept: (task) => true,
-                    onAccept: (task) async {
-                      // Find the old board
-                      final oldBoard = _boards.firstWhere(
-                        (b) => b.tasks.any((t) => t.id == task.id),
-                      );
-
-                      setState(() {
-                        // Remove task from old board
-                        oldBoard.tasks.removeWhere((t) => t.id == task.id);
-                        // Add task to new board
-                        board.tasks.add(task);
-                      });
-
-                      try {
-                        // Update task's board and status in backend
-                        await _taskService.updateTask(
-                          task.id,
-                          {
-                            'board': board.id,
-                            'status': board.title,
+                            );
                           },
                         );
-                        // Update project status
-                        await _projectService
-                            .updateProjectStatus(board.projectId);
-                        _loadData(); // Refresh data
-                      } catch (e) {
-                        print('Error updating task: $e');
-                        _loadData(); // Refresh to ensure UI is in sync
-                        if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                                content: Text('Failed to update task: $e')),
-                          );
-                        }
-                      }
-                    },
-                    builder: (context, candidateData, rejectedData) {
-                      return Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(16.0),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              const Text(
-                                'No tasks',
-                                style: TextStyle(color: Colors.white54),
-                              ),
-                              const SizedBox(height: 8),
-                              TextButton.icon(
-                                onPressed: () {
-                                  _showAddTaskDialog(board);
-                                },
-                                icon: const Icon(Icons.add, size: 16),
-                                label: const Text('Add Task'),
-                                style: TextButton.styleFrom(
-                                  foregroundColor: AppColors.primaryColor,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
+                      },
+                    ),
                   ),
-              ],
+                  if (board.tasks.isEmpty)
+                    DragTarget<Task>(
+                      onWillAccept: (task) => true,
+                      onAccept: (task) async {
+                        // Find the old board
+                        final oldBoard = _boards.firstWhere(
+                          (b) => b.tasks.any((t) => t.id == task.id),
+                        );
+
+                        setState(() {
+                          // Remove task from old board
+                          oldBoard.tasks.removeWhere((t) => t.id == task.id);
+                          // Add task to new board
+                          board.tasks.add(task);
+                        });
+
+                        try {
+                          // Update task's board and status in backend
+                          await _taskService.updateTask(
+                            task.id,
+                            {
+                              'board': board.id,
+                              'status': board.title,
+                            },
+                          );
+                          // Update project status
+                          await _projectService
+                              .updateProjectStatus(board.projectId);
+                          _loadData(); // Refresh data
+                        } catch (e) {
+                          print('Error updating task: $e');
+                          _loadData(); // Refresh to ensure UI is in sync
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                  content: Text('Failed to update task: $e')),
+                            );
+                          }
+                        }
+                      },
+                      builder: (context, candidateData, rejectedData) {
+                        return Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(16.0),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Text(
+                                  'No tasks',
+                                  style: TextStyle(color: Colors.white54),
+                                ),
+                                const SizedBox(height: 8),
+                                TextButton.icon(
+                                  onPressed: () {
+                                    _showAddTaskDialog(board);
+                                  },
+                                  icon: const Icon(Icons.add, size: 16),
+                                  label: const Text('Add Task'),
+                                  style: TextButton.styleFrom(
+                                    foregroundColor: AppColors.primaryColor,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                ],
+              ),
             ),
           );
         }).toList(),
@@ -715,7 +753,7 @@ class _KanbanBoardScreenState extends State<KanbanBoardScreen> {
 
   Widget _buildTaskCard(Task task, Board board) {
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
       decoration: BoxDecoration(
         color: const Color(0xFF35383F),
         borderRadius: BorderRadius.circular(8),

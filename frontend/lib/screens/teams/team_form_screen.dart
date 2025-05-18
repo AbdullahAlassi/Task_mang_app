@@ -6,7 +6,10 @@ import '../../services/team_service.dart';
 class TeamFormScreen extends StatefulWidget {
   final Team? team;
 
-  const TeamFormScreen({Key? key, this.team}) : super(key: key);
+  const TeamFormScreen({
+    Key? key,
+    this.team,
+  }) : super(key: key);
 
   @override
   State<TeamFormScreen> createState() => _TeamFormScreenState();
@@ -19,22 +22,34 @@ class _TeamFormScreenState extends State<TeamFormScreen> {
 
   final _nameController = TextEditingController();
   final _descriptionController = TextEditingController();
-  final _departmentController = TextEditingController();
-
-  String _type = 'department';
-  String _status = 'active';
-  String? _parentId;
+  String _type = 'Department';
 
   @override
   void initState() {
     super.initState();
-    if (widget.team != null) {
-      _nameController.text = widget.team!.name;
-      _descriptionController.text = widget.team!.description ?? '';
-      _departmentController.text = widget.team!.department ?? '';
-      _type = widget.team!.type;
-      _status = widget.team!.status;
-      _parentId = widget.team!.parentId;
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    try {
+      setState(() => _isLoading = true);
+
+      // If editing existing team, populate fields
+      if (widget.team != null) {
+        _nameController.text = widget.team!.name;
+        _descriptionController.text = widget.team!.description ?? '';
+        _type = widget.team!.type;
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to load data: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -42,7 +57,6 @@ class _TeamFormScreenState extends State<TeamFormScreen> {
   void dispose() {
     _nameController.dispose();
     _descriptionController.dispose();
-    _departmentController.dispose();
     super.dispose();
   }
 
@@ -56,9 +70,6 @@ class _TeamFormScreenState extends State<TeamFormScreen> {
         'name': _nameController.text,
         'description': _descriptionController.text,
         'type': _type,
-        'status': _status,
-        'department': _departmentController.text,
-        if (_parentId != null) 'parentId': _parentId,
       };
 
       if (widget.team != null) {
@@ -98,49 +109,6 @@ class _TeamFormScreenState extends State<TeamFormScreen> {
             fontWeight: FontWeight.bold,
           ),
         ),
-        actions: [
-          if (widget.team != null)
-            IconButton(
-              icon: const Icon(Icons.delete, color: Colors.red),
-              onPressed: () async {
-                final confirm = await showDialog<bool>(
-                  context: context,
-                  builder: (context) => AlertDialog(
-                    title: const Text('Delete Team'),
-                    content: const Text(
-                      'Are you sure you want to delete this team? This action cannot be undone.',
-                    ),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(context, false),
-                        child: const Text('Cancel'),
-                      ),
-                      TextButton(
-                        onPressed: () => Navigator.pop(context, true),
-                        child: const Text(
-                          'Delete',
-                          style: TextStyle(color: Colors.red),
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-
-                if (confirm == true && mounted) {
-                  try {
-                    await _teamService.deleteTeam(widget.team!.id);
-                    Navigator.pop(context, true);
-                  } catch (e) {
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Failed to delete team: $e')),
-                      );
-                    }
-                  }
-                }
-              },
-            ),
-        ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -151,7 +119,6 @@ class _TeamFormScreenState extends State<TeamFormScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Basic Information
                     Card(
                       color: AppColors.cardColor,
                       child: Padding(
@@ -160,7 +127,7 @@ class _TeamFormScreenState extends State<TeamFormScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             const Text(
-                              'Basic Information',
+                              'Team Information',
                               style: TextStyle(
                                 fontSize: 20,
                                 fontWeight: FontWeight.bold,
@@ -191,36 +158,6 @@ class _TeamFormScreenState extends State<TeamFormScreen> {
                               maxLines: 3,
                             ),
                             const SizedBox(height: 16),
-                            TextFormField(
-                              controller: _departmentController,
-                              decoration: const InputDecoration(
-                                labelText: 'Department',
-                                border: OutlineInputBorder(),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Team Type and Status
-                    Card(
-                      color: AppColors.cardColor,
-                      child: Padding(
-                        padding: const EdgeInsets.all(16.0),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Team Settings',
-                              style: TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                                color: AppColors.textColor,
-                              ),
-                            ),
-                            const SizedBox(height: 16),
                             DropdownButtonFormField<String>(
                               value: _type,
                               decoration: const InputDecoration(
@@ -229,52 +166,21 @@ class _TeamFormScreenState extends State<TeamFormScreen> {
                               ),
                               items: const [
                                 DropdownMenuItem(
-                                  value: 'department',
+                                  value: 'Department',
                                   child: Text('Department'),
                                 ),
                                 DropdownMenuItem(
-                                  value: 'project',
-                                  child: Text('Project'),
+                                  value: 'Project-based',
+                                  child: Text('Project-based'),
                                 ),
                                 DropdownMenuItem(
-                                  value: 'functional',
-                                  child: Text('Functional'),
-                                ),
-                                DropdownMenuItem(
-                                  value: 'cross-functional',
+                                  value: 'Cross-functional',
                                   child: Text('Cross-functional'),
                                 ),
                               ],
                               onChanged: (value) {
                                 if (value != null) {
                                   setState(() => _type = value);
-                                }
-                              },
-                            ),
-                            const SizedBox(height: 16),
-                            DropdownButtonFormField<String>(
-                              value: _status,
-                              decoration: const InputDecoration(
-                                labelText: 'Status',
-                                border: OutlineInputBorder(),
-                              ),
-                              items: const [
-                                DropdownMenuItem(
-                                  value: 'active',
-                                  child: Text('Active'),
-                                ),
-                                DropdownMenuItem(
-                                  value: 'inactive',
-                                  child: Text('Inactive'),
-                                ),
-                                DropdownMenuItem(
-                                  value: 'archived',
-                                  child: Text('Archived'),
-                                ),
-                              ],
-                              onChanged: (value) {
-                                if (value != null) {
-                                  setState(() => _status = value);
                                 }
                               },
                             ),

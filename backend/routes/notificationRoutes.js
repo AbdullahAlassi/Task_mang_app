@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const Notification = require('../models/Notification');
+const Notification = require('../models/notificationModel');
 const authMiddleware = require('../middleware/auth');
 
 // 📌 Get all notifications for the logged-in user
@@ -10,6 +10,19 @@ router.get('/', authMiddleware, async (req, res) => {
     res.status(200).json(notifications);
   } catch (error) {
     res.status(500).json({ message: 'Error fetching notifications', error });
+  }
+});
+
+// 📌 Mark all notifications as read
+router.put('/mark-all-read', authMiddleware, async (req, res) => {
+  try {
+    await Notification.updateMany(
+      { user: req.user.id, isRead: false },
+      { $set: { isRead: true } }
+    );
+    res.status(200).json({ message: 'All notifications marked as read' });
+  } catch (error) {
+    res.status(500).json({ message: 'Error marking all notifications as read', error });
   }
 });
 

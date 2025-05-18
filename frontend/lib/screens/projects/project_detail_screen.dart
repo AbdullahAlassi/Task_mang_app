@@ -3,11 +3,14 @@ import 'package:intl/intl.dart';
 import '../../config/app_colors.dart';
 import '../../models/project_model.dart';
 import '../../models/task_model.dart';
+import '../../models/board_model.dart';
 import '../../services/project_service.dart';
 import '../../services/task_service.dart';
+import '../../services/board_service.dart';
 import '../tasks/create_task_screen.dart';
 import '../tasks/task_detail_screen.dart';
 import 'kanban_board_screen.dart';
+import '../boards/create_board_screen.dart';
 
 class ProjectDetailScreen extends StatefulWidget {
   final String projectId;
@@ -24,10 +27,13 @@ class ProjectDetailScreen extends StatefulWidget {
 class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
   final ProjectService _projectService = ProjectService();
   final TaskService _taskService = TaskService();
+  final BoardService _boardService = BoardService();
   bool _isLoading = true;
   Project? _project;
   List<Task> _tasks = [];
   bool _isManager = false;
+  List<Board> _boards = [];
+  String? _error;
 
   @override
   void initState() {
@@ -38,10 +44,12 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
   Future<void> _loadProjectDetails() async {
     setState(() {
       _isLoading = true;
+      _error = null;
     });
 
     try {
       final project = await _projectService.getProjectDetails(widget.projectId);
+      final boards = await _boardService.getBoardsForProject(widget.projectId);
       final tasks = await _taskService.getTasksForProject(widget.projectId);
       final currentUserId = await _projectService.getCurrentUserId();
 
@@ -49,6 +57,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
 
       setState(() {
         _project = project;
+        _boards = boards;
         _tasks = tasks;
         _isManager = project.managerId == currentUserId;
         _isLoading = false;
@@ -59,6 +68,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
 
       setState(() {
         _isLoading = false;
+        _error = e.toString();
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -219,40 +229,133 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
 
                     const SizedBox(height: 24),
 
-                    // Tasks Section
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          'Tasks',
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.textColor,
-                          ),
-                        ),
-                        ElevatedButton.icon(
-                          onPressed: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => CreateTaskScreen(
-                                  projectId: _project!.id,
-                                  boardId: _project!.boardIds.isNotEmpty
-                                      ? _project!.boardIds.first
-                                      : 'default',
+                    // Boards Section
+                    _boards.isEmpty
+                        ? Center(
+                            child: Column(
+                              children: [
+                                const Text(
+                                  'No boards yet',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    color: AppColors.secondaryTextColor,
+                                  ),
                                 ),
+                                const SizedBox(height: 8),
+                                ElevatedButton.icon(
+                                  onPressed: () async {
+                                    final created = await Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) => CreateBoardScreen(
+                                          projectId: widget.projectId,
+                                        ),
+                                      ),
+                                    );
+                                    if (created == true) {
+                                      await _loadProjectDetails();
+                                    }
+                                  },
+                                  icon: const Icon(Icons.add),
+                                  label: const Text('Create Board'),
+                                ),
+                              ],
+                            ),
+                          )
+                        : Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  const Text(
+                                    'Boards',
+                                    style: TextStyle(
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.bold,
+                                      color: AppColors.textColor,
+                                    ),
+                                  ),
+                                  ElevatedButton.icon(
+                                    onPressed: () async {
+                                      final created = await Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (context) =>
+                                              CreateBoardScreen(
+                                                  projectId: widget.projectId),
+                                        ),
+                                      );
+                                      if (created == true) {
+                                        await _loadProjectDetails();
+                                      }
+                                    },
+                                    icon: const Icon(Icons.add, size: 16),
+                                    label: const Text('Add Board'),
+                                    style: ElevatedButton.styleFrom(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 12, vertical: 8),
+                                    ),
+                                  ),
+                                ],
                               ),
-                            ).then((_) => _loadProjectDetails());
-                          },
-                          icon: const Icon(Icons.add, size: 16),
-                          label: const Text('Add Task'),
-                          style: ElevatedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 8),
+                              const SizedBox(height: 12),
+                              ListView.builder(
+                                shrinkWrap: true,
+                                physics: const NeverScrollableScrollPhysics(),
+                                itemCount: _boards.length,
+                                itemBuilder: (context, index) {
+                                  final board = _boards[index];
+                                  return Card(
+                                    margin:
+                                        const EdgeInsets.symmetric(vertical: 8),
+                                    color: AppColors.cardColor,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: ListTile(
+                                      title: Text(
+                                        board.title,
+                                        style: const TextStyle(
+                                            color: AppColors.textColor),
+                                      ),
+                                      trailing: ElevatedButton.icon(
+                                        onPressed: () {
+                                          Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (context) =>
+                                                  CreateTaskScreen(
+                                                projectId: _project!.id,
+                                                boardId: board.id,
+                                              ),
+                                            ),
+                                          ).then((_) => _loadProjectDetails());
+                                        },
+                                        icon: const Icon(Icons.add),
+                                        label: const Text('Add Task'),
+                                        style: ElevatedButton.styleFrom(
+                                            padding: const EdgeInsets.symmetric(
+                                                horizontal: 12, vertical: 8)),
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ],
                           ),
-                        ),
-                      ],
+
+                    const SizedBox(height: 24),
+
+                    // Tasks Section
+                    const Text(
+                      'Tasks',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.textColor,
+                      ),
                     ),
 
                     const SizedBox(height: 16),

@@ -49,64 +49,10 @@ class _TeamMembersScreenState extends State<TeamMembersScreen> {
     }
   }
 
-  Future<void> _addMember(User user) async {
-    try {
-      await _teamService.addTeamMember(widget.team.id, user.id, 'member');
-      await _loadData();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${user.name} added to team')),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to add member: $e')),
-        );
-      }
-    }
-  }
-
-  Future<void> _removeMember(TeamMember member) async {
-    try {
-      await _teamService.removeTeamMember(widget.team.id, member.userId);
-      await _loadData();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Member removed from team')),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to remove member: $e')),
-        );
-      }
-    }
-  }
-
-  Future<void> _updateMemberRole(TeamMember member, String newRole) async {
-    try {
-      await _teamService.updateTeamMemberRole(
-          widget.team.id, member.userId, newRole);
-      await _loadData();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Member role updated')),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to update role: $e')),
-        );
-      }
-    }
-  }
-
   void _showAddMemberDialog() {
     showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (context) => AlertDialog(
         title: const Text('Add Team Member'),
         content: SizedBox(
@@ -126,9 +72,9 @@ class _TeamMembersScreenState extends State<TeamMembersScreen> {
                 ),
                 title: Text(user.name),
                 subtitle: Text(user.email),
-                onTap: () {
+                onTap: () async {
                   Navigator.pop(context);
-                  _addMember(user);
+                  await _addMember(user);
                 },
               );
             },
@@ -147,6 +93,7 @@ class _TeamMembersScreenState extends State<TeamMembersScreen> {
   void _showRoleUpdateDialog(TeamMember member) {
     showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (context) => AlertDialog(
         title: const Text('Update Member Role'),
         content: Column(
@@ -155,17 +102,17 @@ class _TeamMembersScreenState extends State<TeamMembersScreen> {
             ListTile(
               title: const Text('Team Lead'),
               selected: member.role == 'team_lead',
-              onTap: () {
+              onTap: () async {
                 Navigator.pop(context);
-                _updateMemberRole(member, 'team_lead');
+                await _updateMemberRole(member, 'team_lead');
               },
             ),
             ListTile(
               title: const Text('Member'),
               selected: member.role == 'member',
-              onTap: () {
+              onTap: () async {
                 Navigator.pop(context);
-                _updateMemberRole(member, 'member');
+                await _updateMemberRole(member, 'member');
               },
             ),
           ],
@@ -178,6 +125,97 @@ class _TeamMembersScreenState extends State<TeamMembersScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _addMember(User user) async {
+    try {
+      await _teamService.addTeamMember(
+        widget.team.id,
+        user.id,
+        'member',
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Member added successfully')),
+        );
+        await _loadData();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to add member: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _updateMemberRole(TeamMember member, String newRole) async {
+    try {
+      await _teamService.updateTeamMemberRole(
+        widget.team.id,
+        member.userId,
+        newRole,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Member role updated successfully')),
+        );
+        await _loadData();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to update member role: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _removeMember(TeamMember member) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('Remove Member'),
+        content: const Text(
+          'Are you sure you want to remove this member from the team?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text(
+              'Remove',
+              style: TextStyle(color: Colors.red),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true && mounted) {
+      try {
+        await _teamService.removeTeamMember(
+          widget.team.id,
+          member.userId,
+        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Member removed successfully')),
+          );
+          await _loadData();
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Failed to remove member: $e')),
+          );
+        }
+      }
+    }
   }
 
   Widget _buildMemberCard(User user, TeamMember member) {

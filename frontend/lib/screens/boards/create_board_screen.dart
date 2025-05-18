@@ -26,12 +26,12 @@ class _CreateBoardScreenState extends State<CreateBoardScreen> {
   DateTime? _deadline;
   List<String> _assignedTo = [];
   bool _isLoading = false;
-  String _selectedType = 'To-do'; // Default board type
+  String _selectedType = 'To Do'; // Default board type
   bool _showCustomTitle = false;
 
   // Board type options
   final List<String> _boardTypes = [
-    'To-do',
+    'To Do',
     'In Progress',
     'Done',
     'Other',

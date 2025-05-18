@@ -23,3 +23,16 @@ Thumbs.db
 # Build & Coverage (if using testing)
 coverage/
 dist/
+
+# Flutter/Dart specific
+.dart_tool/
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+pubspec.lock
+
+# IDE specific
+*.iml
+.idea/
+.vscode/

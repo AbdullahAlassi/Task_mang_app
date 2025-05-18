@@ -27,6 +27,10 @@ class ProjectCard extends StatelessWidget {
     final bannerColor = project.getBannerColor();
     final progressColor = _getBlendedColor(bannerColor);
 
+    // Debug log for team name
+    print('💬 [ProjectCard] ${project.title} → teamName: ${project.teamName}');
+    print("Rendering team label: ${project.teamName}");
+
     return GestureDetector(
       onTap: () {
         Navigator.push(
@@ -46,16 +50,52 @@ class ProjectCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Project banner
-            Container(
-              height: 120,
-              decoration: BoxDecoration(
-                color: bannerColor,
-                borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(16),
-                  topRight: Radius.circular(16),
+            // Banner with team label overlay
+            Stack(
+              children: [
+                Container(
+                  height: 120,
+                  decoration: BoxDecoration(
+                    color: bannerColor,
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(16),
+                      topRight: Radius.circular(16),
+                    ),
+                  ),
                 ),
-              ),
+                if (project.type == 'team' &&
+                    project.teamName != null &&
+                    project.teamName!.isNotEmpty)
+                  Positioned(
+                    top: 8,
+                    right: 8,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.group, size: 14, color: Colors.blue),
+                          const SizedBox(width: 4),
+                          Text(
+                            project.teamName!,
+                            style: const TextStyle(
+                              color: Colors.blue,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+              ],
             ),
 
             // Project details
