@@ -11,7 +11,11 @@ const createProjectSchema = Joi.object({
 // Schema for team creation
 const createTeamSchema = Joi.object({
   name: Joi.string().min(3).max(50).required(),
+  description: Joi.string().max(500).optional(),
   parent: Joi.string().optional(),
+  type: Joi.string().valid('department', 'project', 'functional', 'cross-functional').default('functional'),
+  status: Joi.string().valid('active', 'inactive', 'archived').default('active'),
+  department: Joi.string().optional(),
   members: Joi.array().items(
     Joi.object({
       user: Joi.string().required(),

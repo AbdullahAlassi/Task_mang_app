@@ -5,6 +5,7 @@ import 'package:frontend/screens/projects/projects_screen.dart';
 import 'package:frontend/screens/tasks/create_task_screen.dart';
 import 'package:frontend/screens/tasks/task_detail_screen.dart';
 import 'package:frontend/screens/tasks/ongoing_tasks_screen.dart';
+import 'package:frontend/screens/calendar/calendar_screen.dart';
 import 'package:intl/intl.dart';
 import '../../config/app_colors.dart';
 import '../../models/project_model.dart';
@@ -16,6 +17,7 @@ import '../../widgets/bottom_navigation.dart';
 import '../../widgets/project_card.dart';
 import '../../widgets/search_bar.dart';
 import '../../widgets/task_card.dart';
+import '../../screens/projects/kanban_board_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({Key? key}) : super(key: key);
@@ -93,17 +95,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
           MaterialPageRoute(builder: (context) => const ProjectsScreen()),
         );
         break;
+
       case 2:
-        // Show create project/task dialog
-        _showCreateOptions();
-        break;
-      case 3:
         // Navigate to calendar screen
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Calendar screen coming soon')),
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const CalendarScreen()),
         );
         break;
-      case 4:
+      case 3:
         // Navigate to notifications screen
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Notifications screen coming soon')),
@@ -365,8 +365,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                     horizontal: 16.0),
                                 itemCount: _recentProjects.length,
                                 itemBuilder: (context, index) {
-                                  return ProjectCard(
-                                      project: _recentProjects[index]);
+                                  final project = _recentProjects[index];
+                                  return _buildProjectCard(project);
                                 },
                               ),
                             ),
@@ -469,5 +469,191 @@ class _DashboardScreenState extends State<DashboardScreen> {
         onTap: _handleNavigation,
       ),
     );
+  }
+
+  Widget _buildProjectCard(Project project) {
+    final progress = project.progress / 100;
+    final completedTasks = project.completedTasks;
+    final totalTasks = project.totalTasks;
+    final bannerColor = project.getBannerColor();
+
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => KanbanBoardScreen(projectId: project.id),
+          ),
+        ).then((_) => _loadData());
+      },
+      child: Container(
+        width: 300,
+        margin: const EdgeInsets.only(bottom: 16, right: 16),
+        decoration: BoxDecoration(
+          color: AppColors.cardColor,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Project banner
+            Container(
+              height: 110,
+              width: double.infinity,
+              decoration: BoxDecoration(
+                color: bannerColor,
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(16),
+                  topRight: Radius.circular(16),
+                ),
+              ),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  Positioned(
+                    top: 8,
+                    right: 8,
+                    child: Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        shape: BoxShape.circle,
+                      ),
+                      child: IconButton(
+                        padding: EdgeInsets.zero,
+                        icon: const Icon(Icons.more_horiz,
+                            color: Colors.white, size: 18),
+                        onPressed: () {
+                          _showProjectOptions(project);
+                        },
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // Project details
+            Padding(
+              padding: const EdgeInsets.all(12.0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Project title and date
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              project.title,
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.textColor,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              '${project.completedTasks}/${project.totalTasks} tasks',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: AppColors.secondaryTextColor,
+                              ),
+                            ),
+                            Text(
+                              project.deadline != null
+                                  ? 'Due: ${DateFormat('MMM d, yyyy').format(project.deadline!)}'
+                                  : 'No deadline',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: AppColors.secondaryTextColor,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      // Progress indicators
+                      SizedBox(
+                        width: 36,
+                        height: 36,
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            CircularProgressIndicator(
+                              value: progress,
+                              backgroundColor: AppColors.secondaryCardColor,
+                              valueColor:
+                                  AlwaysStoppedAnimation<Color>(bannerColor),
+                              strokeWidth: 4,
+                            ),
+                            Center(
+                              child: Text(
+                                '${(progress * 100).round()}%',
+                                style: const TextStyle(
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppColors.textColor,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  // Project status
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: _getStatusColor(project.status).withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Text(
+                      project.status,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: _getStatusColor(project.status),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Color _getStatusColor(String status) {
+    switch (status) {
+      case 'To Do':
+        return Colors.blue;
+      case 'In Progress':
+        return Colors.orange;
+      case 'Completed':
+        return Colors.green;
+      case 'Archived':
+        return Colors.grey;
+      default:
+        return AppColors.primaryColor;
+    }
+  }
+
+  void _showProjectOptions(Project project) {
+    // Implement the logic to show project options
   }
 }

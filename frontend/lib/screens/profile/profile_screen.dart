@@ -6,6 +6,8 @@ import '../../services/user_service.dart';
 import '../../models/user_model.dart';
 import '../dashboard/dashboard_screen.dart';
 import '../projects/projects_screen.dart';
+import '../calendar/calendar_screen.dart';
+import '../teams/team_hierarchy_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({Key? key}) : super(key: key);
@@ -44,40 +46,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   void _navigateToScreen(int index) {
-    if (index == 0) {
-      // Navigate to Dashboard
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => const DashboardScreen()),
-      );
-    } else if (index == 1) {
-      // Navigate to Projects
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => const ProjectsScreen()),
-      );
-    } else {
-      // Show "Coming Soon" dialog for other screens
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          backgroundColor: AppColors.cardColor,
-          title: const Text(
-            'Coming Soon',
-            style: TextStyle(color: Colors.white),
-          ),
-          content: const Text(
-            'This feature is under development and will be available soon!',
-            style: TextStyle(color: Colors.white70),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('OK'),
-            ),
-          ],
-        ),
-      );
+    switch (index) {
+      case 0:
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const DashboardScreen()),
+        );
+        break;
+      case 1:
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const ProjectsScreen()),
+        );
+        break;
+      case 2:
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const CalendarScreen()),
+        );
+        break;
+      case 3:
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Notifications screen coming soon')),
+        );
+        break;
     }
   }
 
@@ -171,11 +163,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                   const SizedBox(height: 20),
                   // Menu Items
-                  _buildMenuItem(
-                    icon: Icons.work_outline,
-                    title: 'Workspace',
+                  ListTile(
+                    leading: const Icon(Icons.workspace_premium),
+                    title: const Text('Workspace'),
                     onTap: () {
-                      // Handle workspace tap
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const TeamHierarchyScreen(),
+                        ),
+                      );
                     },
                   ),
                   _buildMenuItem(

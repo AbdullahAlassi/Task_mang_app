@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/task_model.dart';
+import '../services/auth_service.dart';
+import '../services/project_service.dart';
 
 class TaskService {
   // Update the baseUrl to match your actual backend URL
@@ -9,6 +11,9 @@ class TaskService {
       'http://10.0.2.2:3000/api'; // For Android emulator
   // static const String baseUrl = 'http://localhost:3000/api'; // For iOS simulator
   // static const String baseUrl = 'http://YOUR_ACTUAL_IP:3000/api'; // For physical device
+
+  final AuthService _authService = AuthService();
+  final ProjectService _projectService = ProjectService();
 
   // Get token from shared preferences
   Future<String?> _getToken() async {
@@ -215,47 +220,39 @@ class TaskService {
 
   // Create a new task
   Future<Task> createTask(Map<String, dynamic> taskData) async {
+    print('=== Creating New Task Debug ===');
+    print('Task Data: $taskData');
+    print('Color value: ${taskData['color']}');
+
+    final token = await _authService.getToken();
+    print('Token: ${token != null ? 'Present' : 'Missing'}');
+
+    if (token == null) {
+      throw Exception('No authentication token found');
+    }
+
     try {
-      print('=== Creating New Task Debug ===');
-      print('Task Data: $taskData');
-
-      final token = await _getToken();
-      print('Token: ${token != null ? 'Present' : 'Missing'}');
-
-      if (token == null) {
-        throw Exception('Authentication token not found');
-      }
-
       final boardId = taskData['board'];
-      if (boardId == null) {
-        throw Exception('Board ID is required to create a task');
-      }
+      final projectId = taskData['projectId'];
 
-      // Format the task data according to the backend model
-      final formattedTaskData = {
+      final requestBody = {
         'title': taskData['title'],
-        'description': taskData['description'] ?? '',
-        'status': taskData['status'] ?? 'To Do',
+        'description': taskData['description'],
+        'status': 'To Do',
         'deadline': taskData['deadline'],
         'board': boardId,
-        'assignedTo': taskData['assignedTo'] ?? [],
+        'assignedTo': taskData['assignedTo'],
+        'color': taskData['color'],
       };
-
-      final url = '$baseUrl/tasks/$boardId';
-      print('Request URL: $url');
-      print('Request Headers: ${{
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $token',
-      }}');
-      print('Request Body: ${json.encode(formattedTaskData)}');
+      print('Request body: $requestBody');
 
       final response = await http.post(
-        Uri.parse(url),
+        Uri.parse('${baseUrl}/tasks/$boardId'),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',
         },
-        body: json.encode(formattedTaskData),
+        body: json.encode(requestBody),
       );
 
       print('Response Status Code: ${response.statusCode}');
@@ -264,16 +261,26 @@ class TaskService {
       if (response.statusCode == 201) {
         final data = json.decode(response.body);
         print('Task created successfully with ID: ${data['_id']}');
+        print('Task color in response: ${data['color']}');
+
+        // Update project status using the correct project ID
+        try {
+          await _projectService.updateProjectStatus(projectId);
+        } catch (e) {
+          print('Warning: Failed to update project status: $e');
+          // Don't throw the error, as the task was created successfully
+        }
+
         return Task.fromJson(data);
       } else {
-        throw Exception('Failed to create task: ${response.statusCode}');
+        throw Exception('Failed to create task: ${response.body}');
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
       print('Error creating task:');
       print('Error message: $e');
       print('Stack trace:');
-      print(StackTrace.current);
-      throw Exception('Failed to create task: $e');
+      print(stackTrace);
+      rethrow;
     }
   }
 
@@ -330,12 +337,18 @@ class TaskService {
   // Update a task
   Future<Task> updateTask(String taskId, Map<String, dynamic> taskData) async {
     try {
+      print('\n=== Updating Task Debug ===');
+      print('Task ID: $taskId');
+      print('Task Data: $taskData');
+
       final token = await _getToken();
+      print('Token: ${token != null ? 'Present' : 'Missing'}');
 
       if (token == null) {
         throw Exception('Authentication token not found');
       }
 
+      print('\n1. Updating task...');
       final response = await http.put(
         Uri.parse('$baseUrl/tasks/$taskId'),
         headers: {
@@ -345,82 +358,265 @@ class TaskService {
         body: json.encode(taskData),
       );
 
+      print('Response Status: ${response.statusCode}');
+      print('Response Body: ${response.body}');
+
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
+        print('\n2. Fetching board details...');
+
+        // Get board details to get project ID
+        final boardResponse = await http.get(
+          Uri.parse('$baseUrl/boards/${data['board']}'),
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $token',
+          },
+        );
+
+        print('Board Response Status: ${boardResponse.statusCode}');
+        print('Board Response Body: ${boardResponse.body}');
+
+        if (boardResponse.statusCode == 200) {
+          final boardData = json.decode(boardResponse.body);
+          print('\n3. Updating project status...');
+          print('Project ID from board: ${boardData['project']}');
+
+          await _projectService.updateProjectStatus(boardData['project']);
+          print('Project status update completed');
+        } else {
+          print('Failed to fetch board details: ${boardResponse.statusCode}');
+          throw Exception('Failed to fetch board details');
+        }
+
         return Task.fromJson(data);
       } else {
+        print('Failed to update task: ${response.statusCode}');
         throw Exception('Failed to update task: ${response.statusCode}');
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      print('\nError in updateTask:');
+      print('Error message: $e');
+      print('Stack trace:');
+      print(stackTrace);
       throw Exception('Failed to update task: $e');
     }
   }
 
   // Update task status
-  Future<Task> updateTaskStatus(String taskId, bool isCompleted) async {
-    try {
-      final token = await _getToken();
+  Future<void> updateTaskStatus(String taskId, bool isCompleted) async {
+    print('\n=== Task Status Update Debug ===');
+    print('Task ID: $taskId');
+    print('Marking as completed: $isCompleted');
 
-      if (token == null) {
-        throw Exception('Authentication token not found');
+    final token = await _getToken();
+    if (token == null) {
+      throw Exception('Authentication token not found');
+    }
+
+    try {
+      // 1. Get task details to get current board and project
+      print('\n1. Getting task details...');
+      final taskResponse = await http.get(
+        Uri.parse('$baseUrl/tasks/$taskId'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (taskResponse.statusCode != 200) {
+        throw Exception(
+            'Failed to get task details: ${taskResponse.statusCode}');
       }
 
-      final status = isCompleted ? 'Done' : 'To Do';
+      final taskData = json.decode(taskResponse.body);
+      final currentBoardId = taskData['board'];
+      final projectId = taskData['board']['project'];
 
-      final response = await http.put(
+      // 2. Get all boards for the project
+      print('\n2. Getting project boards...');
+      final boardsResponse = await http.get(
+        Uri.parse('$baseUrl/boards/project/$projectId'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (boardsResponse.statusCode != 200) {
+        throw Exception(
+            'Failed to get project boards: ${boardsResponse.statusCode}');
+      }
+
+      final List<dynamic> boardsData = json.decode(boardsResponse.body);
+      String targetBoardId;
+
+      if (isCompleted) {
+        // Check if there's a Done board
+        final doneBoard = boardsData.firstWhere(
+          (board) => board['type'] == 'Done',
+          orElse: () => null,
+        );
+
+        if (doneBoard == null) {
+          // Create a new Done board only if one doesn't exist
+          print('\n3. Creating Done board...');
+          final createBoardResponse = await http.post(
+            Uri.parse('$baseUrl/boards/projects/$projectId/boards'),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $token',
+            },
+            body: json.encode({
+              'title': 'Done',
+              'type': 'Done',
+              'project': projectId,
+            }),
+          );
+
+          if (createBoardResponse.statusCode != 201) {
+            throw Exception(
+                'Failed to create Done board: ${createBoardResponse.statusCode}');
+          }
+
+          final newBoardData = json.decode(createBoardResponse.body);
+          targetBoardId = newBoardData['_id'];
+          print('Created new Done board with ID: $targetBoardId');
+        } else {
+          targetBoardId = doneBoard['_id'];
+          print('Found existing Done board with ID: $targetBoardId');
+        }
+      } else {
+        // Check if there's an In Progress board
+        final inProgressBoard = boardsData.firstWhere(
+          (board) => board['type'] == 'In Progress',
+          orElse: () => null,
+        );
+
+        if (inProgressBoard == null) {
+          // Create a new In Progress board if one doesn't exist
+          print('\n3. Creating In Progress board...');
+          final createBoardResponse = await http.post(
+            Uri.parse('$baseUrl/boards/projects/$projectId/boards'),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $token',
+            },
+            body: json.encode({
+              'title': 'In Progress',
+              'type': 'In Progress',
+              'project': projectId,
+            }),
+          );
+
+          if (createBoardResponse.statusCode != 201) {
+            throw Exception(
+                'Failed to create In Progress board: ${createBoardResponse.statusCode}');
+          }
+
+          final newBoardData = json.decode(createBoardResponse.body);
+          targetBoardId = newBoardData['_id'];
+          print('Created new In Progress board with ID: $targetBoardId');
+        } else {
+          targetBoardId = inProgressBoard['_id'];
+          print('Found existing In Progress board with ID: $targetBoardId');
+        }
+      }
+
+      print('\n4. Moving task to board: $targetBoardId');
+
+      final moveResponse = await http.put(
         Uri.parse('$baseUrl/tasks/$taskId'),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',
         },
         body: json.encode({
-          'status': status,
+          'board': targetBoardId,
+          'status': isCompleted ? 'Done' : 'In Progress',
         }),
       );
 
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        return Task.fromJson(data);
-      } else {
-        throw Exception('Failed to update task status: ${response.statusCode}');
+      if (moveResponse.statusCode != 200) {
+        throw Exception('Failed to update task: ${moveResponse.statusCode}');
       }
+
+      print('Task updated successfully');
     } catch (e) {
-      throw Exception('Failed to update task status: $e');
+      print('Error updating task status:');
+      print('Error message: $e');
+      print('Stack trace:');
+      print(StackTrace.current);
+      rethrow;
     }
   }
 
   // Delete a task
   Future<bool> deleteTask(String taskId) async {
-    try {
-      final token = await _getToken();
+    print('=== Deleting Task Debug ===');
+    print('Task ID: $taskId');
 
-      if (token == null) {
-        throw Exception('Authentication token not found');
-      }
+    final token = await _authService.getToken();
+    if (token == null) {
+      throw Exception('No authentication token found');
+    }
+
+    try {
+      // First get the task to get the project ID
+      final task = await getTaskDetails(taskId);
+      final projectId = task.projectId;
+      final boardId = task.boardId;
+
+      print('Deleting task from board: $boardId');
+      print('Associated project: $projectId');
 
       final response = await http.delete(
-        Uri.parse('$baseUrl/tasks/$taskId'),
+        Uri.parse('${baseUrl}/tasks/$taskId'),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',
         },
       );
 
-      return response.statusCode == 200;
+      if (response.statusCode == 200) {
+        print('Task deleted successfully');
+
+        // Update project status if we have a project ID
+        if (projectId.isNotEmpty) {
+          try {
+            await _projectService.updateProjectStatus(projectId);
+          } catch (e) {
+            print('Warning: Failed to update project status: $e');
+            // Don't throw here, as the task was successfully deleted
+          }
+        }
+
+        return true;
+      } else {
+        throw Exception('Failed to delete task');
+      }
     } catch (e) {
-      throw Exception('Failed to delete task: $e');
+      print('Error deleting task: $e');
+      return false;
     }
   }
 
   // Move task to a different board
   Future<Task> moveTaskToBoard(String taskId, String boardId) async {
     try {
+      print('\n=== Moving Task to Board Debug ===');
+      print('Task ID: $taskId');
+      print('Board ID: $boardId');
+
       final token = await _getToken();
+      print('Token: ${token != null ? 'Present' : 'Missing'}');
 
       if (token == null) {
         throw Exception('Authentication token not found');
       }
 
+      print('\n1. Updating task board...');
       final response = await http.put(
         Uri.parse('$baseUrl/tasks/$taskId'),
         headers: {
@@ -432,14 +628,74 @@ class TaskService {
         }),
       );
 
+      print('Task Update Response Status: ${response.statusCode}');
+      print('Task Update Response Body: ${response.body}');
+
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        return Task.fromJson(data);
+        print('\n2. Fetching board details...');
+
+        final boardResponse = await http.get(
+          Uri.parse('$baseUrl/boards/$boardId'),
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $token',
+          },
+        );
+
+        print('Board Response Status: ${boardResponse.statusCode}');
+        print('Board Response Body: ${boardResponse.body}');
+
+        if (boardResponse.statusCode == 200) {
+          final boardData = json.decode(boardResponse.body);
+          print('\n3. Updating project status...');
+          print('Project ID from board: ${boardData['project']}');
+
+          await _projectService.updateProjectStatus(boardData['project']);
+          print('Project status update completed');
+
+          return Task.fromJson(data);
+        } else {
+          print('Failed to fetch board details: ${boardResponse.statusCode}');
+          throw Exception('Failed to fetch board details');
+        }
       } else {
+        print('Failed to update task: ${response.statusCode}');
         throw Exception('Failed to move task: ${response.statusCode}');
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      print('\nError in moveTaskToBoard:');
+      print('Error message: $e');
+      print('Stack trace:');
+      print(stackTrace);
       throw Exception('Failed to move task: $e');
+    }
+  }
+
+  Future<void> updateTaskDeadline(String taskId, DateTime newDeadline) async {
+    try {
+      final token = await _authService.getToken();
+      if (token == null) {
+        throw Exception('No authentication token found');
+      }
+
+      final response = await http.patch(
+        Uri.parse('${baseUrl}/tasks/$taskId'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: json.encode({
+          'deadline': newDeadline.toIso8601String(),
+        }),
+      );
+
+      if (response.statusCode != 200) {
+        throw Exception('Failed to update task deadline');
+      }
+    } catch (e) {
+      print('Error updating task deadline: $e');
+      rethrow;
     }
   }
 }

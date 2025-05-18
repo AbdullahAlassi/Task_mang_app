@@ -443,10 +443,18 @@ class _KanbanBoardScreenState extends State<KanbanBoardScreen> {
                   child: DragTarget<Task>(
                     onWillAccept: (task) => true,
                     onAccept: (task) async {
+                      print('\n=== Task Drag Debug ===');
+                      print('Task ID: ${task.id}');
+                      print('Task Title: ${task.title}');
+                      print('Target Board ID: ${board.id}');
+                      print('Target Board Title: ${board.title}');
+
                       // Find the old board
                       final oldBoard = _boards.firstWhere(
                         (b) => b.tasks.any((t) => t.id == task.id),
                       );
+                      print('Source Board ID: ${oldBoard.id}');
+                      print('Source Board Title: ${oldBoard.title}');
 
                       setState(() {
                         // Remove task from old board
@@ -456,6 +464,7 @@ class _KanbanBoardScreenState extends State<KanbanBoardScreen> {
                       });
 
                       try {
+                        print('\n1. Updating task in backend...');
                         // Update task's board and status in backend
                         await _taskService.updateTask(
                           task.id,
@@ -464,9 +473,23 @@ class _KanbanBoardScreenState extends State<KanbanBoardScreen> {
                             'status': board.title,
                           },
                         );
+                        print('Task updated successfully');
+
+                        print('\n2. Updating project status...');
+                        // Update project status
+                        await _projectService
+                            .updateProjectStatus(board.projectId);
+                        print('Project status updated successfully');
+
+                        print('\n3. Refreshing data...');
                         _loadData(); // Refresh data
-                      } catch (e) {
-                        print('Error updating task: $e');
+                        print('Data refresh completed');
+                      } catch (e, stackTrace) {
+                        print('\nError during task drag:');
+                        print('Error message: $e');
+                        print('Stack trace:');
+                        print(stackTrace);
+
                         _loadData(); // Refresh to ensure UI is in sync
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
@@ -528,6 +551,9 @@ class _KanbanBoardScreenState extends State<KanbanBoardScreen> {
                             'status': board.title,
                           },
                         );
+                        // Update project status
+                        await _projectService
+                            .updateProjectStatus(board.projectId);
                         _loadData(); // Refresh data
                       } catch (e) {
                         print('Error updating task: $e');
@@ -708,131 +734,147 @@ class _KanbanBoardScreenState extends State<KanbanBoardScreen> {
           });
         },
         borderRadius: BorderRadius.circular(8),
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Task Title and Actions
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Color banner
+            Container(
+              height: 4,
+              decoration: BoxDecoration(
+                color: task.color ?? AppColors.primaryColor,
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(8),
+                  topRight: Radius.circular(8),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                    child: Text(
-                      task.title,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
+                  // Task Title and Actions
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          task.title,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                      PopupMenuButton<String>(
+                        icon: const Icon(Icons.more_vert,
+                            color: Colors.white, size: 18),
+                        color: const Color(0xFF35383F),
+                        onSelected: (value) {
+                          switch (value) {
+                            case 'edit':
+                              _editTask(task, board);
+                              break;
+                            case 'delete':
+                              _deleteTask(task, board);
+                              break;
+                          }
+                        },
+                        itemBuilder: (context) => [
+                          const PopupMenuItem(
+                            value: 'edit',
+                            child: Text('Edit',
+                                style: TextStyle(color: Colors.white)),
+                          ),
+                          const PopupMenuItem(
+                            value: 'delete',
+                            child: Text('Delete',
+                                style: TextStyle(color: Colors.red)),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
-                  PopupMenuButton<String>(
-                    icon: const Icon(Icons.more_vert,
-                        color: Colors.white, size: 18),
-                    color: const Color(0xFF35383F),
-                    onSelected: (value) {
-                      switch (value) {
-                        case 'edit':
-                          _editTask(task, board);
-                          break;
-                        case 'delete':
-                          _deleteTask(task, board);
-                          break;
-                      }
-                    },
-                    itemBuilder: (context) => [
-                      const PopupMenuItem(
-                        value: 'edit',
-                        child:
-                            Text('Edit', style: TextStyle(color: Colors.white)),
+
+                  // Task Description
+                  if (task.description.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        task.description,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Colors.white70,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      const PopupMenuItem(
-                        value: 'delete',
-                        child:
-                            Text('Delete', style: TextStyle(color: Colors.red)),
-                      ),
+                    ),
+
+                  const SizedBox(height: 8),
+
+                  // Task Footer (Due Date, Assignees)
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      // Due Date
+                      if (task.deadline != null)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.calendar_today,
+                                  size: 12, color: Colors.white70),
+                              const SizedBox(width: 4),
+                              Text(
+                                DateFormat('MMM d').format(task.deadline!),
+                                style: const TextStyle(
+                                  fontSize: 10,
+                                  color: Colors.white70,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                      // Assignees
+                      if (task.assignedTo.isNotEmpty)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.person,
+                                  size: 12, color: Colors.white70),
+                              const SizedBox(width: 4),
+                              Text(
+                                '${task.assignedTo.length}',
+                                style: const TextStyle(
+                                  fontSize: 10,
+                                  color: Colors.white70,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                     ],
                   ),
                 ],
               ),
-
-              // Task Description
-              if (task.description.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 4),
-                  child: Text(
-                    task.description,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: Colors.white70,
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-
-              const SizedBox(height: 8),
-
-              // Task Footer (Due Date, Assignees)
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  // Due Date
-                  if (task.deadline != null)
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.calendar_today,
-                              size: 12, color: Colors.white70),
-                          const SizedBox(width: 4),
-                          Text(
-                            DateFormat('MMM d').format(task.deadline!),
-                            style: const TextStyle(
-                              fontSize: 10,
-                              color: Colors.white70,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                  // Assignees
-                  if (task.assignedTo.isNotEmpty)
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.person,
-                              size: 12, color: Colors.white70),
-                          const SizedBox(width: 4),
-                          Text(
-                            '${task.assignedTo.length}',
-                            style: const TextStyle(
-                              fontSize: 10,
-                              color: Colors.white70,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                ],
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

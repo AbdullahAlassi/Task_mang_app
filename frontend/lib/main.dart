@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:frontend/screens/auth/signup_screen.dart';
+import 'package:frontend/screens/calendar/calendar_screen.dart';
 import 'config/app_colors.dart';
 import 'config/app_theme.dart';
 import 'screens/auth/login_screen.dart';
@@ -27,6 +28,7 @@ class MyApp extends StatelessWidget {
         '/register': (context) => const SignupScreen(),
         '/dashboard': (context) => const DashboardScreen(),
         '/projects': (context) => const ProjectsScreen(),
+        '/calendar': (context) => const CalendarScreen(),
       },
     );
   }

@@ -1,8 +1,10 @@
-enum ProjectStatus { todo, inProgress, completed, archived }
+enum ProjectStatus { all, todo, inProgress, completed, archived }
 
 extension ProjectStatusExtension on ProjectStatus {
   String get name {
     switch (this) {
+      case ProjectStatus.all:
+        return 'All';
       case ProjectStatus.todo:
         return 'To Do';
       case ProjectStatus.inProgress:
@@ -16,6 +18,8 @@ extension ProjectStatusExtension on ProjectStatus {
 
   String get apiValue {
     switch (this) {
+      case ProjectStatus.all:
+        return 'all';
       case ProjectStatus.todo:
         return 'To Do';
       case ProjectStatus.inProgress:
@@ -29,7 +33,9 @@ extension ProjectStatusExtension on ProjectStatus {
 
   static ProjectStatus fromString(String status) {
     switch (status) {
-      case 'To Do':
+      case 'All':
+        return ProjectStatus.all;
+      case 'Not Started':
         return ProjectStatus.todo;
       case 'In Progress':
         return ProjectStatus.inProgress;

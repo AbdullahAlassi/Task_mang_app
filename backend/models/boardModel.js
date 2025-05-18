@@ -10,6 +10,11 @@ const boardSchema = new mongoose.Schema({
     enum: ['To Do', 'In Progress', 'Done'], 
     default: 'To Do' 
   },
+  type: { 
+    type: String, 
+    enum: ['To Do', 'In Progress', 'Done'], 
+    default: 'To Do' 
+  },
   deadline: { type: Date },
   commentCount: { type: Number, default: 0 },
 }, { timestamps: true });

@@ -4,81 +4,112 @@ import 'task_model.dart';
 class Board {
   final String id;
   final String title;
-  final String type; // New field for board type
-  final DateTime? deadline;
-  final List<String> assignedTo;
-  final List<Task> tasks;
+  final String project; // Add project field
+  final List<String> members;
+  final List<Task> tasks; // Changed from List<String> to List<Task>
+  final String status;
   final int commentCount;
-  final String projectId; // Add projectId field
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  final DateTime? deadline; // Add deadline field
+  final String type; // Add type field
+  final List<String> assignedTo; // Add assignedTo field
+
+  // Add projectId getter
+  String get projectId => project;
 
   Board({
     required this.id,
     required this.title,
-    required this.type, // Required type field
-    this.deadline,
-    required this.assignedTo,
+    required this.project, // Add project parameter
+    required this.members,
     required this.tasks,
-    this.commentCount = 0,
-    required this.projectId, // Add projectId to constructor
+    required this.status,
+    required this.commentCount,
+    required this.createdAt,
+    required this.updatedAt,
+    this.deadline, // Add deadline parameter
+    required this.type, // Add type parameter
+    required this.assignedTo, // Add to constructor
   });
 
   factory Board.fromJson(Map<String, dynamic> json) {
     return Board(
-      id: json['_id'] ?? json['id'],
-      title: json['title'],
-      type: json['type'] ?? 'Other', // Default to 'Other' if not specified
+      id: json['_id'] ?? '',
+      title: json['title'] ?? '',
+      project: json['project'] ?? '',
+      members: List<String>.from(json['members'] ?? []),
+      tasks: (json['tasks'] as List<dynamic>?)
+              ?.map((task) => Task.fromJson(task))
+              .toList() ??
+          [],
+      status: json['status'] ?? 'To Do',
+      commentCount: json['commentCount'] ?? 0,
+      createdAt: json['createdAt'] != null
+          ? DateTime.parse(json['createdAt'])
+          : DateTime.now(),
+      updatedAt: json['updatedAt'] != null
+          ? DateTime.parse(json['updatedAt'])
+          : DateTime.now(),
       deadline:
           json['deadline'] != null ? DateTime.parse(json['deadline']) : null,
-      assignedTo: json['assignedTo'] != null
-          ? List<String>.from(json['assignedTo'])
-          : [],
-      tasks: json['tasks'] != null
-          ? List<Task>.from(json['tasks'].map((task) => Task.fromJson(task)))
-          : [],
-      commentCount: json['commentCount'] ?? 0,
-      projectId:
-          json['project'] ?? json['projectId'], // Add projectId from JSON
+      type: json['type'] ?? json['status'] ?? 'To Do',
+      assignedTo: List<String>.from(json['assignedTo'] ?? []),
     );
   }
 
   Map<String, dynamic> toJson() {
     return {
-      'id': id,
+      '_id': id,
       'title': title,
-      'type:': type,
-      'deadline': deadline?.toIso8601String(),
-      'assignedTo': assignedTo,
-      'tasks': tasks.map((task) => task.toJson()).toList(),
+      'project': project, // Include project in JSON
+      'members': members,
+      'tasks': tasks
+          .map((task) => task.toJson())
+          .toList(), // Updated to convert Task objects to JSON
+      'status': status,
       'commentCount': commentCount,
-      'projectId': projectId, // Add projectId to JSON
+      'createdAt': createdAt.toIso8601String(),
+      'updatedAt': updatedAt.toIso8601String(),
+      'deadline': deadline?.toIso8601String(), // Include deadline in JSON
+      'type': type,
+      'assignedTo': assignedTo, // Add to toJson
     };
   }
 
   Board copyWith({
     String? id,
     String? title,
-    String? type,
-    DateTime? deadline,
-    List<String>? assignedTo,
-    List<Task>? tasks,
+    String? project,
+    List<String>? members,
+    List<Task>? tasks, // Updated type
+    String? status,
     int? commentCount,
-    String? projectId, // Add projectId to copyWith
+    DateTime? createdAt,
+    DateTime? updatedAt,
+    DateTime? deadline,
+    String? type,
+    List<String>? assignedTo,
   }) {
     return Board(
       id: id ?? this.id,
       title: title ?? this.title,
-      type: type ?? this.type,
-      deadline: deadline ?? this.deadline,
-      assignedTo: assignedTo ?? this.assignedTo,
+      project: project ?? this.project,
+      members: members ?? this.members,
       tasks: tasks ?? this.tasks,
+      status: status ?? this.status,
       commentCount: commentCount ?? this.commentCount,
-      projectId: projectId ?? this.projectId, // Add projectId to copyWith
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      deadline: deadline ?? this.deadline,
+      type: type ?? this.type,
+      assignedTo: assignedTo ?? this.assignedTo,
     );
   }
 
   // Get color based on board type
   Color getBoardTypeColor() {
-    switch (type) {
+    switch (status) {
       case 'To-do':
         return Colors.blue;
       case 'In Progress':

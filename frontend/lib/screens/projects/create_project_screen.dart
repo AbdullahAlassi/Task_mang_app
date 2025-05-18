@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import '../../../config/app_colors.dart';
 import '../../../models/project_model.dart';
 import '../../../services/project_service.dart';
@@ -25,19 +26,27 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
   final _searchController = TextEditingController();
 
   DateTime? _deadline;
-  String _status = 'To Do';
   bool _isLoading = false;
+  String _selectedColor = '#6B4EFF'; // Default color
+
+  // Predefined project colors
+  final List<String> _projectColors = [
+    '#6B4EFF', // Purple
+    '#211B4E', // Dark blue
+    '#96292B', // Red
+    '#808C44', // Olive green
+    '#35383F', // Dark gray
+    '#2E7D32', // Green
+    '#1565C0', // Blue
+    '#C2185B', // Pink
+    '#FF6F00', // Orange
+    '#4527A0', // Deep Purple
+  ];
 
   final ProjectService _projectService = ProjectService();
   List<User> _availableUsers = [];
   List<User> _filteredUsers = [];
   List<String> _selectedMemberIds = [];
-
-  final List<String> _statusOptions = [
-    'To Do',
-    'In Progress',
-    'Completed',
-  ];
 
   @override
   void initState() {
@@ -48,8 +57,8 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
       _titleController.text = widget.project!.title;
       _descriptionController.text = widget.project!.description;
       _deadline = widget.project!.deadline;
-      _status = widget.project!.status;
       _selectedMemberIds = widget.project!.memberIds;
+      _selectedColor = widget.project!.color;
     }
 
     _loadUsers();
@@ -137,14 +146,17 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
         final projectData = {
           'title': _titleController.text,
           'description': _descriptionController.text,
-          'status': _status,
           'deadline': _deadline?.toIso8601String(),
           'members': _selectedMemberIds,
-          'progress': 0, // Initialize progress as integer
-          'totalTasks': 0, // Initialize totalTasks as integer
-          'completedTasks': 0, // Initialize completedTasks as integer
-          'boards': [], // Initialize with empty boards array
+          'progress': 0,
+          'totalTasks': 0,
+          'completedTasks': 0,
+          'boards': [],
+          'color': _selectedColor,
+          'status': 'To Do',
         };
+
+        print('Creating/Updating project with data: $projectData');
 
         if (widget.project != null) {
           // Update existing project
@@ -156,7 +168,8 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
           }
         } else {
           // Create new project
-          await _projectService.createProject(projectData);
+          final newProject = await _projectService.createProject(projectData);
+          print('Created project with color: ${newProject.color}');
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('Project created successfully')),
@@ -168,6 +181,7 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
           Navigator.pop(context, true); // Return true to indicate success
         }
       } catch (e) {
+        print('Error saving project: $e');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -195,6 +209,135 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
         }
       }
     }
+  }
+
+  // Add this new method for color selection
+  void _showColorPicker() {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: AppColors.cardColor,
+          title: const Text(
+            'Select Project Color',
+            style: TextStyle(color: AppColors.textColor),
+          ),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Predefined colors grid
+                SizedBox(
+                  height: 200,
+                  child: GridView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 5,
+                      crossAxisSpacing: 8,
+                      mainAxisSpacing: 8,
+                    ),
+                    itemCount: _projectColors.length,
+                    itemBuilder: (context, index) {
+                      final color = _projectColors[index];
+                      final isSelected = color == _selectedColor;
+                      return GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            _selectedColor = color;
+                          });
+                          Navigator.pop(context);
+                        },
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color:
+                                Color(int.parse(color.replaceAll('#', '0xFF'))),
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: isSelected
+                                  ? Colors.white
+                                  : Colors.transparent,
+                              width: 2,
+                            ),
+                          ),
+                          child: isSelected
+                              ? const Icon(Icons.check, color: Colors.white)
+                              : null,
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(height: 16),
+                // Custom color picker button
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () async {
+                      Navigator.pop(context);
+                      final Color? pickedColor = await showDialog<Color>(
+                        context: context,
+                        builder: (context) => AlertDialog(
+                          backgroundColor: AppColors.cardColor,
+                          title: const Text(
+                            'Pick Custom Color',
+                            style: TextStyle(color: AppColors.textColor),
+                          ),
+                          content: SingleChildScrollView(
+                            child: ColorPicker(
+                              pickerColor: Color(int.parse(
+                                  _selectedColor.replaceAll('#', '0xFF'))),
+                              onColorChanged: (color) {
+                                setState(() {
+                                  _selectedColor =
+                                      '#${color.value.toRadixString(16).substring(2)}';
+                                });
+                              },
+                              pickerAreaHeightPercent: 0.8,
+                              enableAlpha: false,
+                              labelTypes: const [],
+                              displayThumbColor: true,
+                              paletteType: PaletteType.hsv,
+                            ),
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(context),
+                              child: const Text('Cancel'),
+                            ),
+                            TextButton(
+                              onPressed: () => Navigator.pop(
+                                  context,
+                                  Color(int.parse(
+                                      _selectedColor.replaceAll('#', '0xFF')))),
+                              child: const Text('Select'),
+                            ),
+                          ],
+                        ),
+                      );
+                      if (pickedColor != null) {
+                        setState(() {
+                          _selectedColor =
+                              '#${pickedColor.value.toRadixString(16).substring(2)}';
+                        });
+                      }
+                    },
+                    icon: const Icon(Icons.color_lens),
+                    label: const Text('Custom Color'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primaryColor,
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -315,9 +458,9 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
 
                     const SizedBox(height: 24),
 
-                    // Status Field
+                    // Color Selection
                     const Text(
-                      'Status',
+                      'Project Color',
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
@@ -325,33 +468,43 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      decoration: BoxDecoration(
-                        color: AppColors.cardColor,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: DropdownButtonHideUnderline(
-                        child: DropdownButton<String>(
-                          value: _status,
-                          isExpanded: true,
-                          dropdownColor: AppColors.cardColor,
-                          style: const TextStyle(color: AppColors.textColor),
-                          icon: const Icon(Icons.arrow_drop_down,
-                              color: AppColors.primaryColor),
-                          items: _statusOptions.map((String status) {
-                            return DropdownMenuItem<String>(
-                              value: status,
-                              child: Text(status),
-                            );
-                          }).toList(),
-                          onChanged: (String? newValue) {
-                            if (newValue != null) {
-                              setState(() {
-                                _status = newValue;
-                              });
-                            }
-                          },
+                    GestureDetector(
+                      onTap: _showColorPicker,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 16),
+                        decoration: BoxDecoration(
+                          color: AppColors.cardColor,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Row(
+                              children: [
+                                Container(
+                                  width: 24,
+                                  height: 24,
+                                  decoration: BoxDecoration(
+                                    color: Color(int.parse(_selectedColor
+                                        .replaceAll('#', '0xFF'))),
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Text(
+                                  'Select Color',
+                                  style: TextStyle(
+                                    color: _selectedColor == '#6B4EFF'
+                                        ? AppColors.secondaryTextColor
+                                        : AppColors.textColor,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const Icon(Icons.color_lens,
+                                color: AppColors.primaryColor),
+                          ],
                         ),
                       ),
                     ),

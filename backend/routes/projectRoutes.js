@@ -60,6 +60,7 @@ router.get('/', authMiddleware, async (req, res) => {
   try {
     const userId = req.user.id;
     const isRecent = req.query.recent === 'true';
+    const status = req.query.status;
 
     let query = {
       $or: [
@@ -67,6 +68,11 @@ router.get('/', authMiddleware, async (req, res) => {
         { members: userId }
       ]
     };
+
+    // Add status filter if provided and not 'all'
+    if (status && status !== 'all') {
+      query.status = status;
+    }
 
     let projects;
     if (isRecent) {
@@ -83,7 +89,7 @@ router.get('/', authMiddleware, async (req, res) => {
         .populate('members', 'name email');
     }
 
-    console.log(`Found ${projects.length} projects (recent: ${isRecent})`);
+    console.log(`Found ${projects.length} projects (recent: ${isRecent}, status: ${status})`);
     res.status(200).json(projects);
   } catch (error) {
     console.error('Error fetching projects:', error);
@@ -168,10 +174,7 @@ router.put('/:id', authMiddleware, roleMiddleware(['manager']), async (req, res)
 // Create a project
 router.post('/', authMiddleware, async (req, res) => {
   try {
-    const { title, description, deadline, members } = req.body;
-    
-    // Get a random color from the list
-    const randomColor = projectColors[Math.floor(Math.random() * projectColors.length)];
+    const { title, description, deadline, members, color } = req.body;
     
     const newProject = new Project({
       title,
@@ -179,7 +182,7 @@ router.post('/', authMiddleware, async (req, res) => {
       deadline,
       manager: req.user.id, // Assigning the creator as manager
       members: [...new Set([...members, req.user.id])], // Ensure manager is also a member
-      color: randomColor, // Assign random color
+      color: color || projectColors[Math.floor(Math.random() * projectColors.length)], // Use provided color or random if not provided
     });
 
     await newProject.save();
@@ -197,6 +200,53 @@ router.post('/', authMiddleware, async (req, res) => {
     res.status(201).json(newProject);
   } catch (error) {
     res.status(500).json({ message: 'Error creating project', error: error.message });
+  }
+});
+
+// Update project status based on tasks
+router.put('/:id/status', authMiddleware, async (req, res) => {
+  try {
+    const projectId = req.params.id;
+    console.log(`Updating status for project: ${projectId}`);
+
+    // Find the project
+    const project = await Project.findById(projectId);
+    if (!project) {
+      return res.status(404).json({ message: 'Project not found' });
+    }
+
+    // Find all boards for this project
+    const boards = await Board.find({ project: projectId });
+    const boardIds = boards.map(board => board._id);
+
+    // Get all tasks for these boards
+    const tasks = await Task.find({ board: { $in: boardIds } });
+    
+    // Calculate progress
+    const totalTasks = tasks.length;
+    const completedTasks = tasks.filter(task => task.status === 'Done').length;
+    const progress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+
+    // Update project status based on progress
+    let status = 'To Do';
+    if (progress >= 100) {
+      status = 'Completed';
+    } else if (progress > 0) {
+      status = 'In Progress';
+    }
+
+    // Update the project
+    project.status = status;
+    project.progress = progress;
+    project.totalTasks = totalTasks;
+    project.completedTasks = completedTasks;
+    await project.save();
+
+    console.log(`Project status updated - Progress: ${progress}%, Status: ${status}`);
+    res.status(200).json(project);
+  } catch (error) {
+    console.error('Error updating project status:', error);
+    res.status(500).json({ message: 'Error updating project status', error: error.message });
   }
 });
 

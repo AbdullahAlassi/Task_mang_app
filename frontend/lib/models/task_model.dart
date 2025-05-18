@@ -11,6 +11,7 @@ class Task {
   final String boardId; // This corresponds to the board ID
   final List<String> assignedTo;
   final Color? color;
+  final String projectId;
 
   Task({
     required this.id,
@@ -22,22 +23,66 @@ class Task {
     required this.boardId,
     required this.assignedTo,
     this.color,
+    required this.projectId,
   });
 
   factory Task.fromJson(Map<String, dynamic> json) {
-    // Handle nested board object
-    final board = json['board'];
-    final boardId = board is Map ? board['_id'] : board;
+    print('=== Parsing Task from JSON ===');
+    print('Raw JSON: $json');
+
+    Color? color;
+    if (json['color'] != null) {
+      print('Color value in JSON: ${json['color']}');
+      try {
+        // Handle hex color string (e.g., "#6B4EFF")
+        if (json['color'] is String) {
+          final hexColor = json['color'] as String;
+          print('Parsing hex color: $hexColor');
+          if (hexColor.startsWith('#')) {
+            color = Color(int.parse(hexColor.replaceAll('#', '0xFF')));
+            print('Parsed color value: ${color.value}');
+          }
+        }
+        // Handle integer color value
+        else if (json['color'] is int) {
+          color = Color(json['color'] as int);
+          print('Parsed integer color value: ${color.value}');
+        }
+      } catch (e) {
+        print('Error parsing color: $e');
+        color = null;
+      }
+    } else {
+      print('No color value in JSON');
+    }
+
+    // Extract project ID from board object
+    String projectId = '';
+    if (json['board'] != null) {
+      if (json['board'] is Map) {
+        if (json['board']['project'] != null) {
+          if (json['board']['project'] is Map) {
+            projectId = json['board']['project']['_id'] ?? '';
+          } else if (json['board']['project'] is String) {
+            projectId = json['board']['project'];
+          }
+        }
+      } else if (json['board'] is String) {
+        // If board is a string, it might be the project ID itself
+        projectId = json['board'];
+      }
+    }
 
     return Task(
       id: json['_id'] ?? json['id'],
       title: json['title'],
       description: json['description'] ?? '',
-      status: json['status'],
+      status: json['status'] ?? 'To Do',
       deadline:
           json['deadline'] != null ? DateTime.parse(json['deadline']) : null,
       isCompleted: json['status'] == 'Done',
-      boardId: boardId,
+      boardId:
+          json['board'] is Map ? json['board']['_id'] : json['board'] ?? '',
       assignedTo: json['assignedTo'] != null
           ? (json['assignedTo'] as List)
               .map((a) => a is String ? a : a['_id'] ?? a['id'] ?? '')
@@ -45,9 +90,8 @@ class Task {
               .cast<String>()
               .toList()
           : [],
-      color: json['color'] != null
-          ? Color(int.parse(json['color'], radix: 16))
-          : null,
+      color: color,
+      projectId: projectId,
     );
   }
 
@@ -60,7 +104,10 @@ class Task {
       'deadline': deadline?.toIso8601String(),
       'board': boardId,
       'assignedTo': assignedTo,
-      'color': color?.value.toRadixString(16),
+      'color': color != null
+          ? '#${color!.value.toRadixString(16).substring(2)}'
+          : null,
+      'project': projectId,
     };
   }
 
@@ -74,6 +121,7 @@ class Task {
     String? boardId,
     List<String>? assignedTo,
     Color? color,
+    String? projectId,
   }) {
     return Task(
       id: id ?? this.id,
@@ -85,13 +133,14 @@ class Task {
       boardId: boardId ?? this.boardId,
       assignedTo: assignedTo ?? this.assignedTo,
       color: color ?? this.color,
+      projectId: projectId ?? this.projectId,
     );
   }
 
   // Get color based on task status
   Color getStatusColor() {
     switch (status) {
-      case 'To Do':
+      case 'To Do' || 'To-do':
         return AppColors.statusTodo;
       case 'In Progress':
         return AppColors.statusInProgress;

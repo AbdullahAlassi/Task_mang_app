@@ -25,7 +25,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
   final ProjectService _projectService = ProjectService();
   final TaskService _taskService = TaskService();
   bool _isLoading = true;
-  late Project _project;
+  Project? _project;
   List<Task> _tasks = [];
   bool _isManager = false;
 
@@ -33,7 +33,6 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
   void initState() {
     super.initState();
     _loadProjectDetails();
-    _checkIfManager();
   }
 
   Future<void> _loadProjectDetails() async {
@@ -44,30 +43,35 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
     try {
       final project = await _projectService.getProjectDetails(widget.projectId);
       final tasks = await _taskService.getTasksForProject(widget.projectId);
+      final currentUserId = await _projectService.getCurrentUserId();
+
+      if (!mounted) return;
 
       setState(() {
         _project = project;
         _tasks = tasks;
+        _isManager = project.managerId == currentUserId;
         _isLoading = false;
       });
     } catch (e) {
+      print('Error loading project details: $e');
+      if (!mounted) return;
+
       setState(() {
         _isLoading = false;
       });
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to load project details: $e')),
-        );
-      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to load project details: ${e.toString()}'),
+          duration: const Duration(seconds: 5),
+          action: SnackBarAction(
+            label: 'Retry',
+            onPressed: _loadProjectDetails,
+          ),
+        ),
+      );
     }
-  }
-
-  Future<void> _checkIfManager() async {
-    final currentUserId = await _projectService.getCurrentUserId();
-    setState(() {
-      _isManager = _project.managerId == currentUserId;
-    });
   }
 
   @override
@@ -77,8 +81,9 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
       appBar: AppBar(
         backgroundColor: AppColors.backgroundColor,
         elevation: 0,
-        title:
-            _isLoading ? const Text('Project Details') : Text(_project.title),
+        title: _isLoading
+            ? const Text('Project Details')
+            : Text(_project?.title ?? 'Project Details'),
         actions: [
           IconButton(
             icon: const Icon(Icons.view_kanban),
@@ -96,15 +101,14 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
           IconButton(
             icon: const Icon(Icons.more_vert),
             onPressed: () {
-              // Show project options
-              if (!_isLoading) {
+              if (!_isLoading && _project != null) {
                 _showProjectOptions();
               }
             },
           ),
         ],
       ),
-      body: _isLoading
+      body: _isLoading || _project == null
           ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(
               onRefresh: _loadProjectDetails,
@@ -118,7 +122,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
                       height: 150,
                       width: double.infinity,
                       decoration: BoxDecoration(
-                        color: _project.getBannerColor(),
+                        color: _project!.getBannerColor(),
                         borderRadius: BorderRadius.circular(16),
                       ),
                     ),
@@ -134,7 +138,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                _project.title,
+                                _project!.title,
                                 style: const TextStyle(
                                   fontSize: 24,
                                   fontWeight: FontWeight.bold,
@@ -143,7 +147,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
                               ),
                               const SizedBox(height: 8),
                               Text(
-                                _project.description,
+                                _project!.description,
                                 style: const TextStyle(
                                   fontSize: 16,
                                   color: AppColors.secondaryTextColor,
@@ -160,19 +164,23 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
                           child: Stack(
                             children: [
                               CircularProgressIndicator(
-                                value: _project.progress / 100,
+                                value: _project!.progress / 100,
                                 backgroundColor: AppColors.secondaryCardColor,
                                 valueColor: AlwaysStoppedAnimation<Color>(
-                                    _project.getBannerColor()),
-                                strokeWidth: 6,
+                                    _project!.getBannerColor()),
+                                strokeWidth: 4,
                               ),
                               Center(
-                                child: Text(
-                                  '${_project.progress}%',
-                                  style: const TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.bold,
-                                    color: AppColors.textColor,
+                                child: Padding(
+                                  padding: const EdgeInsets.only(
+                                      right: 23, bottom: 23),
+                                  child: Text(
+                                    '${_project!.progress}%',
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                      color: AppColors.textColor,
+                                    ),
                                   ),
                                 ),
                               ),
@@ -190,19 +198,19 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
                       children: [
                         _buildStatCard(
                           'Tasks',
-                          '${_project.completedTasks}/${_project.totalTasks}',
+                          '${_project!.completedTasks}/${_project!.totalTasks}',
                           Icons.task_alt,
                         ),
                         _buildStatCard(
                           'Status',
-                          _project.status,
+                          _project!.status,
                           Icons.info_outline,
                         ),
                         _buildStatCard(
                           'Deadline',
-                          _project.deadline != null
+                          _project!.deadline != null
                               ? DateFormat('MMM d, yyyy')
-                                  .format(_project.deadline!)
+                                  .format(_project!.deadline!)
                               : 'None',
                           Icons.calendar_today,
                         ),
@@ -229,9 +237,9 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
                               context,
                               MaterialPageRoute(
                                 builder: (context) => CreateTaskScreen(
-                                  projectId: _project.id,
-                                  boardId: _project.boardIds.isNotEmpty
-                                      ? _project.boardIds.first
+                                  projectId: _project!.id,
+                                  boardId: _project!.boardIds.isNotEmpty
+                                      ? _project!.boardIds.first
                                       : 'default',
                                 ),
                               ),
@@ -274,9 +282,9 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
                                       context,
                                       MaterialPageRoute(
                                         builder: (context) => CreateTaskScreen(
-                                          projectId: _project.id,
-                                          boardId: _project.boardIds.isNotEmpty
-                                              ? _project.boardIds.first
+                                          projectId: _project!.id,
+                                          boardId: _project!.boardIds.isNotEmpty
+                                              ? _project!.boardIds.first
                                               : 'default',
                                         ),
                                       ),
@@ -350,7 +358,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
           value: task.isCompleted,
           onChanged: (value) {
             // Update task status
-            _updateTaskStatus(task, value ?? false);
+            _updateTaskStatus(task.id, value ?? false);
           },
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(4),
@@ -398,15 +406,48 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
     );
   }
 
-  void _updateTaskStatus(Task task, bool isCompleted) async {
+  Future<void> _updateTaskStatus(String taskId, bool isCompleted) async {
     try {
-      await _taskService.updateTaskStatus(task.id, isCompleted);
-      _loadProjectDetails();
-    } catch (e) {
+      setState(() {
+        _isLoading = true;
+      });
+
+      // Update task status
+      await _taskService.updateTaskStatus(taskId, isCompleted);
+
+      // Update project status using the project ID, not the board ID
+      await _projectService.updateProjectStatus(_project!.id);
+
+      // Reload project details
+      await _loadProjectDetails();
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to update task status: $e')),
+          SnackBar(
+            content: Text(
+                'Task ${isCompleted ? 'completed' : 'marked as incomplete'}'),
+            duration: const Duration(seconds: 2),
+          ),
         );
+      }
+    } catch (e) {
+      print('Error updating task status: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to update task status: $e'),
+            action: SnackBarAction(
+              label: 'Retry',
+              onPressed: () => _updateTaskStatus(taskId, isCompleted),
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
       }
     }
   }
@@ -508,7 +549,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
           title: const Text('Delete Project',
               style: TextStyle(color: AppColors.textColor)),
           content: Text(
-            'Are you sure you want to delete "${_project.title}"? This action cannot be undone.',
+            'Are you sure you want to delete "${_project!.title}"? This action cannot be undone.',
             style: const TextStyle(color: AppColors.textColor),
           ),
           actions: [
@@ -521,7 +562,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
                 Navigator.pop(context);
                 try {
                   final success =
-                      await _projectService.deleteProject(_project.id);
+                      await _projectService.deleteProject(_project!.id);
                   if (success && mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(

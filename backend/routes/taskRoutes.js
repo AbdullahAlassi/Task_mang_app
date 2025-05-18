@@ -69,12 +69,19 @@ async function updateProjectTaskCounts(boardId) {
 // Create a new task
 router.post('/:boardId', authMiddleware, async (req, res) => {
   try {
-    const { title, description, deadline, assignedTo } = req.body;
+    const { title, description, deadline, assignedTo, color } = req.body;
     const board = await Board.findById(req.params.boardId);
     
     if (!board) return res.status(404).json({ message: 'Board not found' });
 
-    const newTask = new Task({ title, description, deadline, board: board._id, assignedTo });
+    const newTask = new Task({ 
+      title, 
+      description, 
+      deadline, 
+      board: board._id, 
+      assignedTo,
+      color: color || '#6B4EFF' // Include color with default fallback
+    });
     await newTask.save();
 
     board.tasks.push(newTask._id);
@@ -414,6 +421,42 @@ router.get('/filter/upcoming', authMiddleware, async (req, res) => {
   } catch (error) {
     console.error('Error fetching upcoming tasks:', error);
     res.status(500).json({ error: error.message });
+  }
+});
+
+// Get all tasks for the authenticated user
+router.get('/', authMiddleware, async (req, res) => {
+  try {
+    console.log('=== Fetching All Tasks Debug ===');
+    const userId = req.user.id;
+    console.log('User ID:', userId);
+
+    // Find all projects where user is manager or member
+    const projects = await Project.find({
+      $or: [
+        { manager: userId },
+        { members: userId }
+      ]
+    });
+    console.log('Found', projects.length, 'projects for user');
+
+    // Get all boards from these projects
+    const projectIds = projects.map(p => p._id);
+    const boards = await Board.find({ project: { $in: projectIds } });
+    console.log('Found', boards.length, 'boards');
+
+    // Get all tasks from these boards
+    const boardIds = boards.map(b => b._id);
+    const tasks = await Task.find({ board: { $in: boardIds } })
+      .populate('board')
+      .populate('assignedTo', 'name email')
+      .sort({ deadline: 1 });
+
+    console.log('Found', tasks.length, 'tasks');
+    res.status(200).json(tasks);
+  } catch (error) {
+    console.error('Error fetching all tasks:', error);
+    res.status(500).json({ message: 'Error fetching tasks', error: error.message });
   }
 });
 

@@ -6,6 +6,7 @@ import '../../models/user_model.dart';
 import '../../services/task_service.dart';
 import '../../services/project_service.dart';
 import '../../services/user_service.dart';
+import '../../services/board_service.dart';
 
 class CreateTaskScreen extends StatefulWidget {
   final String projectId;
@@ -30,6 +31,7 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
   final _taskService = TaskService();
   final _projectService = ProjectService();
   final _userService = UserService();
+  final _boardService = BoardService();
 
   DateTime? _dueDate;
   List<String> _assignedTo = [];
@@ -70,19 +72,33 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
   Future<void> _loadProjectMembers() async {
     try {
       setState(() => _isLoading = true);
+      print('\n=== Loading Project Members ===');
+
+      // Get the project ID from the board
+      final board = await _boardService.getBoardDetails(widget.boardId);
+      final projectId = board.project;
+      print('Project ID from board: $projectId');
 
       // First get the project details to get the member IDs
-      final project = await _projectService.getProjectDetails(widget.projectId);
+      final project = await _projectService.getProjectDetails(projectId);
+      print('Project loaded: ${project.title}');
+      print('Project member IDs: ${project.memberIds}');
 
       // Only fetch users that are members of this project
       final members = await _userService.getUsersByIds(project.memberIds);
+      print('Fetched ${members.length} members');
 
       setState(() {
         _projectMembers = members;
         _filteredMembers = members;
         _isLoading = false;
       });
-    } catch (e) {
+      print('Project members loaded successfully');
+    } catch (e, stackTrace) {
+      print('\nError loading project members:');
+      print('Error message: $e');
+      print('Stack trace:');
+      print(stackTrace);
       setState(() => _isLoading = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -112,7 +128,16 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
     });
 
     try {
+      print('\n=== Loading Task Details ===');
+      print('Task ID: ${widget.taskId}');
+      print('Project ID: ${widget.projectId}');
+      print('Board ID: ${widget.boardId}');
+
       final task = await _taskService.getTaskDetails(widget.taskId!);
+      print('Task loaded: ${task.title}');
+      print('Task color: ${task.color}');
+      print('Task assigned to: ${task.assignedTo}');
+
       setState(() {
         _titleController.text = task.title;
         _descriptionController.text = task.description;
@@ -122,7 +147,12 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
         _selectedColor = task.color ?? Colors.blue;
         _isLoading = false;
       });
-    } catch (e) {
+      print('Task details loaded successfully');
+    } catch (e, stackTrace) {
+      print('\nError loading task details:');
+      print('Error message: $e');
+      print('Stack trace:');
+      print(stackTrace);
       setState(() {
         _isLoading = false;
       });
@@ -176,7 +206,7 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
           'deadline': _dueDate?.toIso8601String(),
           'assignedTo': _assignedTo,
           'priority': _priority,
-          'color': _selectedColor.value.toString(),
+          'color': '#${_selectedColor.value.toRadixString(16).substring(2)}',
           'board': widget.boardId,
           'projectId': widget.projectId,
         };

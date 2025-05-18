@@ -39,8 +39,8 @@ router.post('/projects/:projectId/boards', authMiddleware, async (req, res) => {
     console.log('Request Body:', req.body);
     console.log('User ID:', req.user.id);
 
-    const { title, deadline, assignedTo, status } = req.body;
-    console.log('Extracted Data:', { title, deadline, assignedTo, status });
+    const { title, deadline, assignedTo, status, type } = req.body;
+    console.log('Extracted Data:', { title, deadline, assignedTo, status, type });
 
     const project = await Project.findById(req.params.projectId);
     console.log('Project Found:', project ? 'Yes' : 'No');
@@ -56,7 +56,8 @@ router.post('/projects/:projectId/boards', authMiddleware, async (req, res) => {
       project: project._id, 
       deadline: deadline ? new Date(deadline) : undefined,
       members: assignedTo || [],
-      status: status || 'To Do'
+      status: status || 'To Do',
+      type: type || status || 'To Do'
     });
 
     console.log('Saving board...');

@@ -9,6 +9,8 @@ import '../../../widgets/bottom_navigation.dart';
 import 'project_detail_screen.dart';
 import 'create_project_screen.dart';
 import 'kanban_board_screen.dart';
+import '../../../screens/dashboard/dashboard_screen.dart';
+import '../../../screens/calendar/calendar_screen.dart';
 
 class ProjectsScreen extends StatefulWidget {
   const ProjectsScreen({Key? key}) : super(key: key);
@@ -21,7 +23,7 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
   final ProjectService _projectService = ProjectService();
   bool _isLoading = true;
   List<Project> _projects = [];
-  ProjectStatus _selectedStatus = ProjectStatus.todo;
+  ProjectStatus _selectedStatus = ProjectStatus.all;
   int _currentNavIndex = 1; // Project tab selected
 
   @override
@@ -36,8 +38,15 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
     });
 
     try {
-      final projects =
-          await _projectService.getProjectsByStatus(_selectedStatus);
+      List<Project> projects;
+      if (_selectedStatus == ProjectStatus.all) {
+        // If "All" is selected, fetch all projects
+        projects = await _projectService.getAllProjects();
+      } else {
+        // Otherwise fetch projects by status
+        projects = await _projectService.getProjectsByStatus(_selectedStatus);
+      }
+
       setState(() {
         _projects = projects;
         _isLoading = false;
@@ -62,20 +71,26 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
       _currentNavIndex = index;
     });
 
-    // Handle navigation to different screens
     switch (index) {
       case 0:
-        Navigator.pushReplacementNamed(context, '/dashboard');
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const DashboardScreen()),
+        );
+        break;
+      case 1:
+        // Already on projects
         break;
       case 2:
-        // Show create project dialog
-        _showCreateProjectModal();
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const CalendarScreen()),
+        );
         break;
       case 3:
-        Navigator.pushReplacementNamed(context, '/calendar');
-        break;
-      case 4:
-        Navigator.pushReplacementNamed(context, '/notifications');
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Notifications screen coming soon')),
+        );
         break;
     }
   }
@@ -174,13 +189,13 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 16.0),
               child: Row(
                 children: [
+                  _buildStatusTab(ProjectStatus.all),
+                  const SizedBox(width: 8),
                   _buildStatusTab(ProjectStatus.todo),
                   const SizedBox(width: 8),
                   _buildStatusTab(ProjectStatus.inProgress),
                   const SizedBox(width: 8),
                   _buildStatusTab(ProjectStatus.completed),
-                  const SizedBox(width: 8),
-                  _buildStatusTab(ProjectStatus.archived),
                 ],
               ),
             ),
@@ -343,67 +358,90 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
             // Project details
             Padding(
               padding: const EdgeInsets.all(16.0),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Project title and date
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          project.title,
-                          style: const TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.textColor,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          '${project.completedTasks}/${project.totalTasks} tasks',
-                          style: const TextStyle(
-                            fontSize: 14,
-                            color: AppColors.secondaryTextColor,
-                          ),
-                        ),
-                        Text(
-                          project.deadline != null
-                              ? 'Due: ${DateFormat('MMM d, yyyy').format(project.deadline!)}'
-                              : 'No deadline',
-                          style: const TextStyle(
-                            fontSize: 14,
-                            color: AppColors.secondaryTextColor,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  // Progress indicators
-                  SizedBox(
-                    width: 40,
-                    height: 40,
-                    child: Stack(
-                      children: [
-                        CircularProgressIndicator(
-                          value: progress,
-                          backgroundColor: AppColors.secondaryCardColor,
-                          valueColor:
-                              AlwaysStoppedAnimation<Color>(bannerColor),
-                          strokeWidth: 5,
-                        ),
-                        Center(
-                          child: Text(
-                            '${project.progress}%',
-                            style: const TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                              color: AppColors.textColor,
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      // Project title and date
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              project.title,
+                              style: const TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.textColor,
+                              ),
                             ),
-                          ),
+                            const SizedBox(height: 4),
+                            Text(
+                              '${project.completedTasks}/${project.totalTasks} tasks',
+                              style: const TextStyle(
+                                fontSize: 14,
+                                color: AppColors.secondaryTextColor,
+                              ),
+                            ),
+                            Text(
+                              project.deadline != null
+                                  ? 'Due: ${DateFormat('MMM d, yyyy').format(project.deadline!)}'
+                                  : 'No deadline',
+                              style: const TextStyle(
+                                fontSize: 14,
+                                color: AppColors.secondaryTextColor,
+                              ),
+                            ),
+                          ],
                         ),
-                      ],
+                      ),
+
+                      // Progress indicators
+                      SizedBox(
+                        width: 40,
+                        height: 40,
+                        child: Stack(
+                          children: [
+                            CircularProgressIndicator(
+                              value: progress,
+                              backgroundColor: AppColors.secondaryCardColor,
+                              valueColor:
+                                  AlwaysStoppedAnimation<Color>(bannerColor),
+                              strokeWidth: 5,
+                            ),
+                            Center(
+                              child: Text(
+                                '${project.progress}%',
+                                style: const TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppColors.textColor,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  // Project status
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: _getStatusColor(project.status).withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      project.status,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: _getStatusColor(project.status),
+                      ),
                     ),
                   ),
                 ],
@@ -413,6 +451,21 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
         ),
       ),
     );
+  }
+
+  Color _getStatusColor(String status) {
+    switch (status) {
+      case 'To Do':
+        return Colors.blue;
+      case 'In Progress':
+        return Colors.orange;
+      case 'Completed':
+        return Colors.green;
+      case 'Archived':
+        return Colors.grey;
+      default:
+        return AppColors.primaryColor;
+    }
   }
 
   void _showProjectOptions(Project project) {
