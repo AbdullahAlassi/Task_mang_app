@@ -368,6 +368,8 @@ class _TeamMembersScreenState extends State<TeamMembersScreen> {
                                 id: member.userId,
                                 name: 'Unknown User',
                                 email: 'unknown@example.com',
+                                createdAt: DateTime.now(),
+                                updatedAt: DateTime.now(),
                               ),
                             );
                             return _buildMemberCard(user, member);

@@ -1,4 +1,6 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:frontend/services/auth_service.dart';
 import 'package:intl/intl.dart';
 import '../../config/app_colors.dart';
 import '../../models/task_model.dart';
@@ -31,7 +33,7 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
   final _titleController = TextEditingController();
   final _descriptionController = TextEditingController();
   final _taskService = TaskService();
-  final _projectService = ProjectService();
+  final _projectService = ProjectService(Dio(), AuthService());
   final _userService = UserService();
   final _boardService = BoardService();
   final TeamService _teamService = TeamService();
@@ -99,9 +101,11 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
           members = await _userService.getUsersByIds(userIds);
         }
       } else {
-        members = project.memberIds
-            .map((id) => User(id: id, name: '', email: ''))
-            .toList();
+        // Fetch user details for all project members
+        if (project.memberIds != null && project.memberIds.isNotEmpty) {
+          members = await _userService
+              .getUsersByIds(List<String>.from(project.memberIds));
+        }
       }
       setState(() {
         _mainTeam = mainTeam;
@@ -216,7 +220,6 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
           'priority': _priority.name,
           'color': '#${_selectedColor.value.toRadixString(16).substring(2)}',
           'board': widget.boardId,
-          'projectId': widget.projectId,
         };
 
         if (widget.taskId != null) {
@@ -228,6 +231,8 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
             );
           }
         } else {
+          final board = await _boardService.getBoardDetails(widget.boardId);
+          print("Board's projectId: ${board.projectId}");
           // Create new task
           await _taskService.createTask(taskData);
           if (mounted) {
@@ -514,7 +519,7 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                                 },
                                 title: Text(user.name.isNotEmpty
                                     ? user.name
-                                    : user.id), // Show user name if available
+                                    : user.email),
                                 subtitle: user.email.isNotEmpty
                                     ? Text(user.email)
                                     : null,
@@ -543,8 +548,12 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                                     }
                                   });
                                 },
-                                title: Text(user
-                                    .id), // You can show user name if available
+                                title: Text(user.name.isNotEmpty
+                                    ? user.name
+                                    : user.email),
+                                subtitle: user.email.isNotEmpty
+                                    ? Text(user.email)
+                                    : null,
                               )),
                         ],
                       ),

@@ -167,22 +167,57 @@ class BoardService {
   // Delete a board
   Future<bool> deleteBoard(String boardId) async {
     try {
+      print('=== Deleting Board Debug ===');
+      print('Board ID: $boardId');
+
       final token = await _getToken();
+      print('Token: ${token != null ? 'Present' : 'Missing'}');
 
       if (token == null) {
         throw Exception('Authentication token not found');
       }
 
+      final url = '$baseUrl/boards/$boardId';
+      print('Request URL: $url');
+      print('Request Headers: ${{
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      }}');
+
       final response = await http.delete(
-        Uri.parse('$baseUrl/boards/$boardId'),
+        Uri.parse(url),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',
         },
       );
 
-      return response.statusCode == 200;
+      print('Response Status Code: ${response.statusCode}');
+      print('Response Body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        print('Board deleted successfully');
+        return true;
+      } else if (response.statusCode == 404) {
+        print('Board not found');
+        final errorData = json.decode(response.body);
+        throw Exception(errorData['message'] ?? 'Board not found');
+      } else if (response.statusCode == 403) {
+        print('Permission denied');
+        final errorData = json.decode(response.body);
+        throw Exception(errorData['message'] ??
+            'Only the project owner can delete this board');
+      } else {
+        print('Failed to delete board');
+        final errorData = json.decode(response.body);
+        throw Exception(errorData['message'] ?? 'Failed to delete board');
+      }
     } catch (e) {
+      print('Error deleting board:');
+      print('Error message: $e');
+      print('Stack trace:');
+      print(StackTrace.current);
       throw Exception('Failed to delete board: $e');
     }
   }

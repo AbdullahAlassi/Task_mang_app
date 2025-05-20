@@ -7,6 +7,8 @@ const Notification = require('../models/notificationModel');
 const { validateRequest, createProjectSchema } = require('../validators/validationSchemas');
 const Task = require('../models/taskModel'); 
 const Board = require('../models/boardModel');
+const { getPersonalProjects } = require('../controllers/projectController');
+const mongoose = require('mongoose');
 
 
 // List of predefined colors for projects
@@ -17,6 +19,7 @@ const projectColors = [
   '#808C44', // Olive green
   '#35383F', // Dark gray
 ];
+
 
 // Get all tasks for a project (Manager and Members allowed)
 router.get('/:id/tasks', authMiddleware, async (req, res) => {
@@ -63,10 +66,11 @@ router.get('/', authMiddleware, async (req, res) => {
     const status = req.query.status;
     const type = req.query.type; // 'personal' or 'team'
 
+    // Base query for user's projects
     let query = {
       $or: [
         { manager: userId },
-        { members: userId }
+        { 'members.userId': userId }
       ]
     };
 
@@ -75,20 +79,13 @@ router.get('/', authMiddleware, async (req, res) => {
       query.type = 'personal';
     } else if (type === 'team') {
       query.type = 'team';
+      // For team projects, also include projects from user's teams
+      query.$or.push({ team: { $in: req.user.teams?.map(t => t.team) || [] } });
     }
 
     // Add status filter if provided and not 'all'
     if (status && status !== 'all') {
       query.status = status;
-    }
-
-    // Visibility: Only show team projects if user is a member of the team
-    if (type === 'team') {
-      query.$or = [
-        { manager: userId },
-        { members: userId },
-        { team: { $in: req.user.teams?.map(t => t.team) || [] } }
-      ];
     }
 
     let projects;
@@ -97,19 +94,17 @@ router.get('/', authMiddleware, async (req, res) => {
       projects = await Project.find(query)
         .sort({ createdAt: -1 })
         .limit(5)
-        .populate('manager', 'name email')
-        .populate('members', 'name email')
+        .populate('manager', 'name email profilePicture')
+        .populate('members.userId', 'name email profilePicture')
         .populate('team', 'name title');
     } else {
       // For all projects
       projects = await Project.find(query)
-        .populate('manager', 'name email')
-        .populate('members', 'name email')
+        .sort({ createdAt: -1 })
+        .populate('manager', 'name email profilePicture')
+        .populate('members.userId', 'name email profilePicture')
         .populate('team', 'name title');
     }
-
-    // TODO: Only allow team leads to create/edit/delete team projects & tasks
-    // TODO: Add analytics for task count per team/sub-team
 
     console.log(`Found ${projects.length} projects (recent: ${isRecent}, status: ${status}, type: ${type})`);
     res.status(200).json(projects);
@@ -118,7 +113,7 @@ router.get('/', authMiddleware, async (req, res) => {
     res.status(500).json({ 
       message: 'Error fetching projects', 
       error: error.message,
-      stack: error.stack 
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 });
@@ -126,7 +121,9 @@ router.get('/', authMiddleware, async (req, res) => {
 // Get project by ID
 router.get('/:id', async (req, res) => {
   try {
-    const project = await Project.findById(req.params.id).populate('manager members');
+    const project = await Project.findById(req.params.id)
+    .populate('manager members')
+    .populate('members.userId', 'name email profilePicture');
     if (!project) return res.status(404).json({ error: 'Project not found' });
     res.status(200).json(project);
   } catch (error) {
@@ -139,24 +136,69 @@ router.put('/:id', authMiddleware, async (req, res) => {
   try {
     const project = await Project.findById(req.params.id);
     if (!project) return res.status(404).json({ message: 'Project not found' });
+    
     if (project.manager.toString() !== req.user.id) {
       return res.status(403).json({ message: 'Only the project manager can edit the project.' });
     }
-    const updatedProject = await Project.findByIdAndUpdate(req.params.id, req.body, { new: true });
+
+    // Handle members update separately
+    if (req.body.members && Array.isArray(req.body.members)) {
+      const currentMembers = project.members;
+      const incomingMemberIds = req.body.members;
+
+      // Keep the manager as owner
+      const newMembers = [
+        {
+          userId: project.manager,
+          role: 'owner',
+          joinedAt: new Date()
+        }
+      ];
+
+      // Add other members with their existing roles or default to 'viewer'
+      incomingMemberIds.forEach(userId => {
+        if (userId !== project.manager.toString()) {
+          const existingMember = currentMembers.find(m => m.userId.toString() === userId);
+          newMembers.push({
+            userId: new mongoose.Types.ObjectId(userId),
+            role: existingMember ? existingMember.role : 'viewer',
+            joinedAt: existingMember ? existingMember.joinedAt : new Date()
+          });
+        }
+      });
+
+      req.body.members = newMembers;
+    }
+
+    const updatedProject = await Project.findByIdAndUpdate(
+      req.params.id,
+      req.body,
+      { new: true }
+    ).populate('manager', 'name email profilePicture')
+     .populate('members.userId', 'name email profilePicture');
+
     res.status(200).json(updatedProject);
   } catch (error) {
+    console.error('Error updating project:', error);
     res.status(400).json({ error: error.message });
   }
 });
+
 
 // Delete project (only manager can delete)
 router.delete('/:id', authMiddleware, async (req, res) => {
   try {
     const project = await Project.findById(req.params.id);
     if (!project) return res.status(404).json({ message: 'Project not found' });
-    if (project.manager.toString() !== req.user.id) {
-      return res.status(403).json({ message: 'Only the project manager can delete the project.' });
+    // Check if the current user is the project owner (createdBy or role is owner)
+    const isOwner = project.createdBy.toString() === req.user.id;
+    const isMemberOwner = project.members.some(
+      m => m.userId.toString() === req.user.id && m.role === 'owner'
+    );
+    if (!isOwner && !isMemberOwner) {
+      return res.status(403).json({ message: 'Only the project owner can delete the project.' });
     }
+    
     await Project.findByIdAndDelete(req.params.id);
     res.status(200).json({ message: 'Project deleted' });
   } catch (error) {
@@ -182,64 +224,241 @@ router.post('/:id/members', authMiddleware, async (req, res) => {
     }
   });
 
+
   // Update a project (Manager only)
 router.put('/:id', authMiddleware, roleMiddleware(['manager']), async (req, res) => {
-    try {
-      const updatedProject = await Project.findByIdAndUpdate(req.params.id, req.body, { new: true });
-      if (!updatedProject) return res.status(404).json({ message: 'Project not found' });
-      res.status(200).json(updatedProject);
-    } catch (error) {
-      res.status(400).json({ error: error.message });
+  try {
+    const projectId = req.params.id;
+    const updates = { ...req.body }; // Copy of the request body
+
+    const project = await Project.findById(projectId);
+    if (!project) return res.status(404).json({ message: 'Project not found' });
+
+    // Handle members update separately
+    if (updates.members && Array.isArray(updates.members)) {
+      const currentMembers = project.members;
+      const incomingMemberIds = updates.members.map(String); // Ensure incoming are strings
+
+      const newMembers = incomingMemberIds.map(userId => {
+        const existingMember = currentMembers.find(m => m.userId.toString() === userId);
+        if (existingMember) {
+          // Keep existing member details (userId, role, joinedAt)
+          // Ensure userId is stored as ObjectId if needed by your schema
+          return { ...existingMember.toObject(), userId: existingMember.userId };
+        } else {
+          // Add new member with default role
+          // Explicitly create a new ObjectId for new members
+          return {
+            userId: new mongoose.Types.ObjectId(userId), // Convert string to ObjectId
+            role: 'member', // Default role for new members
+            joinedAt: new Date(),
+          };
+        }
+      });
+      project.members = newMembers;
+      delete updates.members; // Remove members from the general updates
     }
-  });
+
+    // Apply other updates
+    Object.assign(project, updates); // Update other fields from req.body
+
+    await project.save(); // Save the updated project
+
+    // Re-populate members if needed for the response
+    const updatedProject = await Project.findById(projectId)
+      .populate('manager', 'name email profilePicture')
+      .populate({
+        path: 'members.userId',
+        select: 'name email profilePicture',
+        strictPopulate: false,
+      });
+
+
+    res.status(200).json(updatedProject);
+  } catch (error) {
+    console.error('Error updating project:', error);
+    res.status(400).json({ 
+      message: 'Error updating project', 
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
+});
 
 // Create a project
 router.post('/', authMiddleware, async (req, res) => {
   try {
-    const { title, description, deadline, members, color, type, team } = req.body;
-    // Set the creator as the manager
+    console.log('=== Project Creation Debug ===');
+    console.log('Request Body:', req.body);
+    console.log('User ID:', req.user.id);
+
+    const { title, description, deadline, members = [], color, type, team } = req.body;
     const managerId = req.user.id;
-    let newMembers = Array.isArray(members) ? [...members] : [];
-    // Remove duplicate of manager if present
-    newMembers = newMembers.filter(m => m != managerId);
-    // Add manager to members
-    newMembers.unshift(managerId);
+
+    console.log('Extracted Data:', { title, description, deadline, members, color, type, team });
+
+    // Build members array
+    const filtered = Array.isArray(members) ? [...new Set(members.filter(m => m !== managerId))] : [];
+    console.log('Filtered Members:', filtered);
+
+    const newMembers = [
+      {
+        userId: managerId,
+        role: 'owner',
+        joinedAt: new Date()
+      },
+      ...filtered.map(userId => ({
+        userId,
+        role: 'viewer',
+        joinedAt: new Date()
+      }))
+    ];
+    console.log('New Members Array:', newMembers);
 
     const newProject = new Project({
       title,
       description,
       deadline,
-      manager: managerId, // Assigning the creator as manager
-      members: newMembers, // Ensure manager is also a member
-      color: color || projectColors[Math.floor(Math.random() * projectColors.length)], // Use provided color or random if not provided
+      manager: managerId,
+      members: newMembers,
+      color: color || projectColors[Math.floor(Math.random() * projectColors.length)],
       type: type || 'personal',
       team: type === 'team' ? team : undefined,
-      createdBy: managerId, // <-- Fix: required field
+      createdBy: managerId
     });
+    console.log('New Project Object:', newProject);
 
-    await newProject.save();
+    const savedProject = await newProject.save();
+    console.log('Project Saved Successfully:', savedProject._id);
 
-    // If this is a team project, add the project to the team's projects array
-    if ((type === 'team' || req.body.type === 'team') && (team || req.body.team)) {
-      const teamId = team || req.body.team;
-      await require('../models/teamModel').findByIdAndUpdate(teamId, {
-        $push: { projects: newProject._id }
+    if (type === 'team' && team) {
+      console.log('Updating team with new project...');
+      await require('../models/teamModel').findByIdAndUpdate(team, {
+        $push: { projects: savedProject._id }
+      });
+      console.log('Team updated successfully');
+    }
+
+    const populated = await Project.findById(savedProject._id)
+      .populate('manager', 'name email profilePicture')
+      .populate({
+        path: 'members.userId',
+        select: 'name email profilePicture',
+        strictPopulate: false, // allow skip if userId is invalid
+      });
+    console.log('Project populated successfully');
+
+    res.status(201).json(populated);
+  } catch (error) {
+    console.error('=== Project Creation Error ===');
+    console.error('Error Type:', error.name);
+    console.error('Error Message:', error.message);
+    console.error('Error Stack:', error.stack);
+    console.error('Request Body:', req.body);
+    console.error('User ID:', req.user.id);
+    
+    // Check for specific error types
+    if (error.name === 'ValidationError') {
+      console.error('Validation Errors:', Object.keys(error.errors).map(key => ({
+        field: key,
+        message: error.errors[key].message
+      })));
+      return res.status(400).json({ 
+        message: 'Validation Error', 
+        errors: Object.keys(error.errors).map(key => ({
+          field: key,
+          message: error.errors[key].message
+        }))
       });
     }
 
-    // Send notifications to assigned users
-    newMembers.forEach(async (userId) => {
-      const notification = new Notification({
-        user: userId,
-        type: 'project',
-        message: `You have been assigned a new project: ${title}`
+    if (error.name === 'CastError') {
+      console.error('Cast Error Details:', {
+        path: error.path,
+        value: error.value,
+        kind: error.kind
       });
-      await notification.save();
-    });
+      return res.status(400).json({ 
+        message: 'Invalid Data Type', 
+        details: {
+          path: error.path,
+          value: error.value,
+          kind: error.kind
+        }
+      });
+    }
 
-    res.status(201).json(newProject);
+    res.status(500).json({ 
+      message: 'Error creating project', 
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
+});
+
+router.put('/:projectId/members/:userId', authMiddleware, async (req, res) => {
+  try {
+    const { projectId, userId } = req.params;
+    const { role } = req.body;
+
+    const project = await Project.findById(projectId);
+    if (!project) return res.status(404).json({ message: 'Project not found' });
+
+    const memberIndex = project.members.findIndex(m => m.userId.toString() === userId);
+    if (memberIndex === -1) {
+      return res.status(404).json({ message: 'Member not found in project' });
+    }
+
+    project.members[memberIndex].role = role;
+    await project.save();
+
+    res.status(200).json({ message: 'Member role updated', project });
   } catch (error) {
-    res.status(500).json({ message: 'Error creating project', error: error.message });
+    console.error('Error updating project member role:', error);
+    res.status(500).json({ message: 'Error updating project member role', error: error.message });
+  }
+});
+
+router.get('/:projectId/members', authMiddleware, async (req, res) => {
+  try {
+    const { projectId } = req.params;
+
+    const project = await Project.findById(projectId).populate('members.userId', 'name email profilePicture');
+    if (!project) return res.status(404).json({ message: 'Project not found' });
+
+    const members = project.members.map(m => ({
+      userId: m.userId._id,
+      role: m.role,
+      joinedAt: m.joinedAt,
+      user: m.userId, // populated user info
+    }));
+
+    res.status(200).json(members);
+  } catch (error) {
+    console.error('Error fetching project members:', error);
+    res.status(500).json({ message: 'Failed to fetch project members', error: error.message });
+  }
+});
+
+router.delete('/:projectId/members/:userId', authMiddleware, async (req, res) => {
+  try {
+    const { projectId, userId } = req.params;
+
+    const project = await Project.findById(projectId);
+    if (!project) return res.status(404).json({ message: 'Project not found' });
+
+    const memberIndex = project.members.findIndex(m => m.userId.toString() === userId);
+    if (memberIndex === -1) {
+      return res.status(404).json({ message: 'Member not found in project' });
+    }
+
+    project.members.splice(memberIndex, 1);
+    await project.save();
+
+    res.status(200).json({ message: 'Member removed from project' });
+  } catch (error) {
+    console.error('Error removing project member:', error);
+    res.status(500).json({ message: 'Error removing project member', error: error.message });
   }
 });
 

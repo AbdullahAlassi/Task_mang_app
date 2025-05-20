@@ -21,19 +21,25 @@ router.get('/events', authMiddleware, async (req, res) => {
 
     // Find all projects where user is manager or member
     const projects = await Project.find({
-      $or: [
-        { manager: userId },
-        { members: userId }
-      ],
-      $or: [
-        { deadline: { $gte: startDate, $lte: endDate } },
-        { status: { $ne: 'Completed' } }
+      $and: [
+        {
+          $or: [
+            { manager: userId },
+            { 'members.userId': userId }
+          ]
+        },
+        {
+          $or: [
+            { deadline: { $gte: startDate, $lte: endDate } },
+            { status: { $ne: 'Completed' } }
+          ]
+        }
       ]
     }).select('_id title deadline color status');
 
     // Find all teams the user is a member of
     const userTeams = await require('../models/teamModel').find({
-      'members.user': userId
+      'members.userId': userId
     }).select('_id');
     const userTeamIds = userTeams.map(t => t._id);
 

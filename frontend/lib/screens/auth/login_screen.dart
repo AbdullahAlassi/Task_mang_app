@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:frontend/screens/auth/signup_screen.dart';
 import 'package:frontend/screens/dashboard/dashboard_screen.dart';
 import 'package:frontend/services/auth_service.dart';
 import 'package:frontend/widgets/custom_text_field.dart';
 import 'package:frontend/widgets/social_login_button.dart';
+import 'package:frontend/models/user_model.dart';
+import 'package:frontend/providers/auth_provider.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({Key? key}) : super(key: key);
@@ -48,12 +51,20 @@ class _LoginScreenState extends State<LoginScreen> {
 
       try {
         print('Attempting to login with AuthService...');
-        final token = await _authService.login(
+        final result = await _authService.login(
           email: _emailController.text,
           password: _passwordController.text,
           rememberMe: _rememberMe,
         );
-        print('Login successful, token received');
+        print('Login successful, setting user data');
+
+        // Set user data in AuthProvider
+        final user = User.fromJson(result['user']);
+        if (mounted) {
+          Provider.of<AuthProvider>(context, listen: false).setUser(user);
+          Provider.of<AuthProvider>(context, listen: false)
+              .setToken(result['token']);
+        }
 
         if (mounted) {
           print('Navigating to Dashboard...');

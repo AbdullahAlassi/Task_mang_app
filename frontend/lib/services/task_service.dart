@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:dio/dio.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/task_model.dart';
@@ -13,7 +14,7 @@ class TaskService {
   // static const String baseUrl = 'http://YOUR_ACTUAL_IP:3000/api'; // For physical device
 
   final AuthService _authService = AuthService();
-  final ProjectService _projectService = ProjectService();
+  final ProjectService _projectService = ProjectService(Dio(), AuthService());
 
   // Get token from shared preferences
   Future<String?> _getToken() async {

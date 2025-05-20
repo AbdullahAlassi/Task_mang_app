@@ -792,7 +792,12 @@ class TeamMemberList extends StatelessWidget {
   Widget build(BuildContext context) {
     final teamUsers = team.members
         .map((m) => users.firstWhere((u) => u.id == m.userId,
-            orElse: () => User(id: m.userId, name: 'Unknown', email: '')))
+            orElse: () => User(
+                id: m.userId,
+                name: 'Unknown',
+                email: '',
+                createdAt: DateTime.now(),
+                updatedAt: DateTime.now())))
         .toList();
 
     return Card(

@@ -3,7 +3,10 @@ import 'dart:async';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:jwt_decoder/jwt_decoder.dart';
+import 'package:provider/provider.dart';
+import 'package:flutter/material.dart';
 import '../models/user_model.dart';
+import '../providers/auth_provider.dart';
 
 class AuthService {
   //static const String baseUrl = 'http://10.0.2.2:3000/api';
@@ -54,6 +57,8 @@ class AuthService {
             country: country,
             phoneNumber: phoneNumber,
             profilePicture: profilePicture,
+            createdAt: DateTime.now(),
+            updatedAt: DateTime.now(),
           );
         } catch (e) {
           print('Error parsing response: $e');
@@ -77,7 +82,7 @@ class AuthService {
     }
   }
 
-  Future<String> login({
+  Future<Map<String, dynamic>> login({
     required String email,
     required String password,
     bool rememberMe = false,
@@ -144,8 +149,52 @@ class AuthService {
           await prefs.setBool('rememberMe', true);
         }
 
-        print('=== AuthService Login Successful ===');
-        return token;
+        // Fetch user details
+        try {
+          final userResponse = await http.get(
+            Uri.parse('$baseUrl/users/me'),
+            headers: {
+              'Authorization': 'Bearer $token',
+              'Content-Type': 'application/json',
+            },
+          );
+
+          if (userResponse.statusCode == 200) {
+            final userData = json.decode(userResponse.body);
+            print('=== AuthService Login Successful ===');
+            return {
+              'token': token,
+              'user': userData,
+            };
+          } else {
+            // If we can't fetch user details, create a basic user object
+            return {
+              'token': token,
+              'user': {
+                'id': userId,
+                'name': email.split('@')[0],
+                'email': email,
+                'role': userRole,
+                'createdAt': DateTime.now().toIso8601String(),
+                'updatedAt': DateTime.now().toIso8601String(),
+              },
+            };
+          }
+        } catch (e) {
+          print('Error fetching user details: $e');
+          // Return basic user data if we can't fetch details
+          return {
+            'token': token,
+            'user': {
+              'id': userId,
+              'name': email.split('@')[0],
+              'email': email,
+              'role': userRole,
+              'createdAt': DateTime.now().toIso8601String(),
+              'updatedAt': DateTime.now().toIso8601String(),
+            },
+          };
+        }
       } else {
         print('Login failed with status code: ${response.statusCode}');
         final error = json.decode(response.body);
@@ -219,5 +268,19 @@ class AuthService {
   Future<String?> getCurrentUserRole() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString('userRole');
+  }
+
+  Future<User> fetchCurrentUser() async {
+    final token = await getToken();
+    if (token == null) throw Exception('No token found');
+    final response = await http.get(
+      Uri.parse('$baseUrl/users/me'),
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    if (response.statusCode == 200) {
+      return User.fromJson(json.decode(response.body));
+    } else {
+      throw Exception('Failed to fetch user');
+    }
   }
 }

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:frontend/providers/auth_provider.dart';
 import 'package:frontend/screens/auth/signup_screen.dart';
 import 'package:frontend/screens/calendar/calendar_screen.dart';
+import 'package:provider/provider.dart';
 import 'config/app_theme.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/dashboard/dashboard_screen.dart';
@@ -9,8 +11,16 @@ import 'screens/projects/projects_screen.dart';
 import 'screens/projects/create_project_screen.dart';
 import 'models/project_model.dart';
 
-void main() {
-  runApp(const MyApp());
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  final authProvider = AuthProvider();
+  await authProvider.loadUserFromToken();
+  runApp(
+    ChangeNotifierProvider.value(
+      value: authProvider,
+      child: const MyApp(),
+    ),
+  );
 }
 
 class MyApp extends StatelessWidget {

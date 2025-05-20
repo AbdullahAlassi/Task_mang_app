@@ -13,6 +13,10 @@ import '../boards/create_board_screen.dart';
 import '../boards/board_detail_screen.dart';
 import '../tasks/task_detail_screen.dart';
 import '../projects/create_project_screen.dart';
+import '../projects/manage_project_team_screen.dart';
+import '../../services/auth_service.dart';
+import 'package:dio/dio.dart';
+import '../../utils/project_permissions.dart';
 
 class KanbanBoardScreen extends StatefulWidget {
   final String projectId;
@@ -27,7 +31,7 @@ class KanbanBoardScreen extends StatefulWidget {
 }
 
 class _KanbanBoardScreenState extends State<KanbanBoardScreen> {
-  final ProjectService _projectService = ProjectService();
+  final ProjectService _projectService = ProjectService(Dio(), AuthService());
   final BoardService _boardService = BoardService();
   final TaskService _taskService = TaskService();
   Project? _project;
@@ -35,6 +39,7 @@ class _KanbanBoardScreenState extends State<KanbanBoardScreen> {
   bool _isLoading = true;
   final ScrollController _scrollController = ScrollController();
   bool _isManager = false;
+  ProjectRole? _currentUserRole;
 
   @override
   void initState() {
@@ -61,38 +66,61 @@ class _KanbanBoardScreenState extends State<KanbanBoardScreen> {
     });
 
     try {
-      print('=== Loading Project Data ===');
+      print('\n=== [KanbanBoardScreen] Loading Project Data ===');
+      print('Project ID: ${widget.projectId}');
+
       final project = await _projectService.getProjectDetails(widget.projectId);
+      print('\n=== Project Details ===');
       print('Project ID: ${project.id}');
-      print('Project loaded: ${project.title}');
+      print('Project Title: ${project.title}');
+      print('Project Type: ${project.type}');
       print('Project Manager ID: ${project.managerId}');
+      print('Project Team ID: ${project.teamId}');
+      print('Project Team Name: ${project.teamName}');
+      print('Project Members Count: ${project.members.length}');
+      print('Project Member IDs: ${project.memberIds}');
+      print('Project Boards Count: ${project.boardIds.length}');
 
-      print('=== Fetching Boards for Project Debug ===');
+      print('\n=== Fetching Boards ===');
       final boards = await _boardService.getBoardsForProject(widget.projectId);
+      print('Found ${boards.length} boards');
 
+      print('\n=== Loading Tasks for Each Board ===');
       final updatedBoards = await Future.wait(boards.map((board) async {
+        print('\nLoading tasks for board: ${board.id}');
         final tasks = await _taskService.getTasksForBoard(board.id);
+        print('Found ${tasks.length} tasks');
         return board.copyWith(tasks: tasks);
       }));
 
-      final currentUserId = await _projectService
-          .getCurrentUserId(); // Updated to use the correct method
+      print('\n=== Getting Current User ID ===');
+      final currentUserId = await _projectService.getCurrentUserId();
       print('Current User ID: $currentUserId');
 
       final isManagerNow =
           currentUserId != null && project.managerId == currentUserId;
       print('Is Manager: $isManagerNow');
 
+      final role = await project.getCurrentUserRole();
       setState(() {
         _project = project;
         _boards = updatedBoards;
         _isManager = isManagerNow;
+        _currentUserRole = ProjectPermissions.standardizeRole(role);
         _isLoading = false;
       });
 
-      print('=== Project Data Loading Complete ===');
-    } catch (e) {
-      print('Error loading data: $e');
+      print('\n=== Project Data Loading Complete ===');
+      print('Total Boards: ${_boards.length}');
+      print(
+          'Total Tasks: ${_boards.fold(0, (sum, board) => sum + board.tasks.length)}');
+    } catch (e, stackTrace) {
+      print('\n=== [KanbanBoardScreen] Error Loading Data ===');
+      print('Error Type: ${e.runtimeType}');
+      print('Error Message: $e');
+      print('Stack Trace:');
+      print(stackTrace);
+
       setState(() {
         _isLoading = false;
       });
@@ -114,26 +142,34 @@ class _KanbanBoardScreenState extends State<KanbanBoardScreen> {
       );
     }
 
+    print('\n=== [KanbanBoardScreen] Building UI ===');
+    print('Project: ${_project!.title}');
+    print('Member IDs Length: ${_project!.memberIds.length}');
+    print('Boards Count: ${_boards.length}');
+
     return Scaffold(
       backgroundColor: const Color(0xFF181A20),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => CreateBoardScreen(
-                projectId: widget.projectId,
-              ),
-            ),
-          ).then((value) {
-            if (value == true) {
-              _loadData();
-            }
-          });
-        },
-        backgroundColor: AppColors.primaryColor,
-        child: const Icon(Icons.add),
-      ),
+      floatingActionButton:
+          (ProjectPermissions.canManageBoards(_currentUserRole!))
+              ? FloatingActionButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => CreateBoardScreen(
+                          projectId: widget.projectId,
+                        ),
+                      ),
+                    ).then((value) {
+                      if (value == true) {
+                        _loadData();
+                      }
+                    });
+                  },
+                  backgroundColor: AppColors.primaryColor,
+                  child: const Icon(Icons.add),
+                )
+              : null,
       body: CustomScrollView(
         slivers: [
           // App Bar
@@ -190,17 +226,33 @@ class _KanbanBoardScreenState extends State<KanbanBoardScreen> {
                                       }
                                     });
                                     break;
-
+                                  case 'Manage Team':
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) =>
+                                            ManageProjectTeamScreen(
+                                          projectId: _project!.id,
+                                          projectTitle: _project!.title,
+                                        ),
+                                      ),
+                                    );
+                                    break;
                                   case 'Delete Project':
                                     _confirmDeleteProject();
                                     break;
                                 }
                               },
-                              itemBuilder: (context) => _isManager
+                              itemBuilder: (context) => ProjectPermissions
+                                      .canManageBoards(_currentUserRole!)
                                   ? [
                                       const PopupMenuItem(
                                         value: 'Edit Project',
                                         child: Text('Edit Project'),
+                                      ),
+                                      const PopupMenuItem(
+                                        value: 'Manage Team',
+                                        child: Text('Manage Team'),
                                       ),
                                       const PopupMenuItem(
                                         value: 'Delete Project',
@@ -214,7 +266,7 @@ class _KanbanBoardScreenState extends State<KanbanBoardScreen> {
                                       const PopupMenuItem(
                                         value: 'NoPermission',
                                         child: Text(
-                                          'Only manager can edit or delete',
+                                          'Only manager or admin can edit or delete',
                                           style: TextStyle(color: Colors.grey),
                                         ),
                                       ),
@@ -246,9 +298,11 @@ class _KanbanBoardScreenState extends State<KanbanBoardScreen> {
                                 radius: 12,
                                 backgroundColor: Colors.grey[300],
                                 child: Text(
-                                  _project!.memberIds[i]
-                                      .substring(0, 1)
-                                      .toUpperCase(),
+                                  _project!.memberIds[i].isNotEmpty
+                                      ? _project!.memberIds[i]
+                                          .substring(0, 1)
+                                          .toUpperCase()
+                                      : '?',
                                   style: const TextStyle(
                                     fontSize: 12,
                                     color: Colors.black,
@@ -434,29 +488,30 @@ class _KanbanBoardScreenState extends State<KanbanBoardScreen> {
       scrollDirection: Axis.horizontal,
       child: ReorderableRow(
         scrollController: _scrollController,
-        onReorder: (oldIndex, newIndex) async {
-          setState(() {
-            // No need to adjust newIndex as we're handling the reordering directly
-            final board = _boards.removeAt(oldIndex);
-            _boards.insert(newIndex, board);
-          });
-
-          try {
-            // Update positions in the backend
-            await _boardService.updateBoardPositions(
-              widget.projectId,
-              _boards.map((board) => board.id).toList(),
-            );
-          } catch (e) {
-            // If the update fails, reload the data to restore the original order
-            _loadData();
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Failed to update board order: $e')),
-              );
-            }
-          }
-        },
+        onReorder: (ProjectPermissions.canManageBoards(_currentUserRole!))
+            ? (oldIndex, newIndex) {
+                setState(() {
+                  final board = _boards.removeAt(oldIndex);
+                  _boards.insert(newIndex, board);
+                });
+                Future.microtask(() async {
+                  try {
+                    await _boardService.updateBoardPositions(
+                      widget.projectId,
+                      _boards.map((board) => board.id).toList(),
+                    );
+                  } catch (e) {
+                    _loadData();
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                            content: Text('Failed to update board order: $e')),
+                      );
+                    }
+                  }
+                });
+              }
+            : (oldIndex, newIndex) {},
         children: _boards.map((board) {
           return Container(
             key: ValueKey(board.id),
@@ -717,11 +772,13 @@ class _KanbanBoardScreenState extends State<KanbanBoardScreen> {
             icon: const Icon(Icons.more_vert, color: Colors.white),
             color: const Color(0xFF35383F),
             onSelected: (value) {
+              print('PopupMenuButton onSelected: $value'); // Debug print
               switch (value) {
                 case 'edit':
                   _editBoard(board);
                   break;
                 case 'delete':
+                  print('Selected Delete Board option.'); // Debug print
                   _deleteBoard(board);
                   break;
                 case 'add_task':
@@ -730,20 +787,25 @@ class _KanbanBoardScreenState extends State<KanbanBoardScreen> {
               }
             },
             itemBuilder: (context) => [
+              // Always show Add Task option
               const PopupMenuItem(
                 value: 'add_task',
                 child: Text('Add Task', style: TextStyle(color: Colors.white)),
               ),
-              const PopupMenuItem(
-                value: 'edit',
-                child:
-                    Text('Edit Board', style: TextStyle(color: Colors.white)),
-              ),
-              const PopupMenuItem(
-                value: 'delete',
-                child:
-                    Text('Delete Board', style: TextStyle(color: Colors.red)),
-              ),
+              // Show Edit and Delete options only if user can manage boards
+              if (_currentUserRole != null &&
+                  ProjectPermissions.canManageBoards(_currentUserRole!)) ...[
+                const PopupMenuItem(
+                  value: 'edit',
+                  child:
+                      Text('Edit Board', style: TextStyle(color: Colors.white)),
+                ),
+                const PopupMenuItem(
+                  value: 'delete',
+                  child:
+                      Text('Delete Board', style: TextStyle(color: Colors.red)),
+                ),
+              ],
             ],
           ),
         ],
@@ -951,6 +1013,8 @@ class _KanbanBoardScreenState extends State<KanbanBoardScreen> {
   }
 
   void _deleteBoard(Board board) async {
+    print(
+        '[_deleteBoard] Method called for board ID: ${board.id}'); // Debug print
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -976,18 +1040,50 @@ class _KanbanBoardScreenState extends State<KanbanBoardScreen> {
 
     if (confirm == true) {
       try {
-        await _boardService.deleteBoard(board.id);
-        _loadData();
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Board deleted successfully')),
-          );
+        print('\n=== Attempting to Delete Board ===');
+        print('Board ID to delete: ${board.id}');
+
+        setState(() {
+          _isLoading = true;
+        });
+
+        // Remove the board from the local state first
+        setState(() {
+          _boards.removeWhere((b) => b.id == board.id);
+        });
+
+        final success = await _boardService.deleteBoard(board.id);
+
+        if (success) {
+          print('Board deletion request successful.');
+
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Board deleted successfully')),
+            );
+          }
         }
       } catch (e) {
+        print('\n=== Board Deletion Failed ===');
+        print('Error: $e');
+
+        // Restore the board in the local state if deletion failed
+        setState(() {
+          if (!_boards.any((b) => b.id == board.id)) {
+            _boards.add(board);
+          }
+        });
+
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('Failed to delete board: $e')),
           );
+        }
+      } finally {
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+          });
         }
       }
     }

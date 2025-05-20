@@ -1,7 +1,9 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:frontend/screens/profile/profile_screen.dart';
 import 'package:frontend/screens/notifications/notifications_screen.dart';
 import 'package:frontend/screens/teams/team_hierarchy_screen.dart';
+import 'package:frontend/services/auth_service.dart';
 import 'package:intl/intl.dart';
 import '../../../config/app_colors.dart';
 import '../../../models/project_model.dart';
@@ -23,7 +25,7 @@ class ProjectsScreen extends StatefulWidget {
 
 class _ProjectsScreenState extends State<ProjectsScreen>
     with SingleTickerProviderStateMixin {
-  final ProjectService _projectService = ProjectService();
+  final ProjectService _projectService = ProjectService(Dio(), AuthService());
   bool _isLoading = true;
   List<Project> _projects = [];
   ProjectStatus _selectedStatus = ProjectStatus.all;
@@ -58,25 +60,36 @@ class _ProjectsScreenState extends State<ProjectsScreen>
     });
 
     try {
+      print('==== [ProjectsScreen] Loading Projects ====');
+      print('Selected Tab: [33m$_selectedTab[0m');
+      print('Selected Status: [33m$_selectedStatus[0m');
       List<Project> projects;
       if (_selectedTab == 'personal') {
-        // Load personal projects
+        print('Calling getPersonalProjects()...');
         projects = await _projectService.getPersonalProjects();
       } else {
-        // Load team projects
+        print('Calling getTeamProjects()...');
         projects = await _projectService.getTeamProjects();
       }
-
+      print('Raw projects data received:');
+      print(projects);
       if (_selectedStatus != ProjectStatus.all) {
         projects =
             projects.where((p) => p.status == _selectedStatus.name).toList();
       }
-
+      print('Filtered projects (after status):');
+      print(projects);
       setState(() {
         _projects = projects;
         _isLoading = false;
       });
-    } catch (e) {
+      print('==== [ProjectsScreen] Projects loaded successfully ====');
+    } catch (e, stackTrace) {
+      print('==== [ProjectsScreen] Error loading projects ====');
+      print('Error:');
+      print(e);
+      print('Stack trace:');
+      print(stackTrace);
       setState(() {
         _isLoading = false;
       });
@@ -181,13 +194,6 @@ class _ProjectsScreenState extends State<ProjectsScreen>
                   // Search and Profile
                   Row(
                     children: [
-                      IconButton(
-                        icon: const Icon(Icons.search,
-                            color: AppColors.textColor),
-                        onPressed: () {
-                          // Show search
-                        },
-                      ),
                       Container(
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
@@ -622,9 +628,8 @@ class _ProjectsScreenState extends State<ProjectsScreen>
               onPressed: () async {
                 Navigator.pop(context);
                 try {
-                  final success =
-                      await _projectService.deleteProject(project.id);
-                  if (success && mounted) {
+                  await _projectService.deleteProject(project.id);
+                  if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
                           content: Text('Project deleted successfully')),

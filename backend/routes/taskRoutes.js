@@ -6,6 +6,8 @@ const Project = require('../models/projectModel');
 const authMiddleware = require('../middleware/auth');
 const Notification = require('../models/notificationModel');
 const upload = require('../middleware/fileUploadMiddleware');
+const projectTeamMiddleware = require('../middleware/projectTeamMiddleware');
+const checkProjectPermission = require('../middleware/checkProjectPermission');
 
 // Helper function to update project task counts
 async function updateProjectTaskCounts(boardId) {
@@ -67,19 +69,16 @@ async function updateProjectTaskCounts(boardId) {
 }
 
 // Create a new task
-router.post('/:boardId', authMiddleware, async (req, res) => {
+router.post('/:boardId', authMiddleware, projectTeamMiddleware, checkProjectPermission('manage_tasks'), async (req, res) => {
   try {
     const { title, description, deadline, assignedTo, color, priority } = req.body;
-    const board = await Board.findById(req.params.boardId);
-    
+    const board = await Board.findById(req.params.boardId).populate('project');
     if (!board) return res.status(404).json({ message: 'Board not found' });
-
+    if (!board.project || !board.project._id) return res.status(404).json({ message: 'Project not found via board' });
+    const project = board.project;
     // Validate priority
     const validPriorities = ['Low', 'Medium', 'High', 'Urgent'];
     const taskPriority = validPriorities.includes(priority) ? priority : 'Medium';
-
-    console.log('Creating task with priority:', taskPriority); // Debug log
-
     const newTask = new Task({ 
       title, 
       description, 
@@ -92,16 +91,9 @@ router.post('/:boardId', authMiddleware, async (req, res) => {
       createdBy: req.body.createdBy,
     });
     await newTask.save();
-
-    console.log('Task created with priority:', newTask.priority); // Debug log
-
     board.tasks.push(newTask._id);
     await board.save();
-
-    // Update project task counts
     await updateProjectTaskCounts(board._id);
-
-    // Send notifications to assigned users
     assignedTo.forEach(async (userId) => {
       const notification = new Notification({
         user: userId,
@@ -110,7 +102,6 @@ router.post('/:boardId', authMiddleware, async (req, res) => {
       });
       await notification.save();
     });
-
     res.status(201).json(newTask);
   } catch (error) {
     console.error('Error creating task:', error); // Debug log
@@ -164,7 +155,7 @@ router.get('/project/:projectId', authMiddleware, async (req, res) => {
 });
 
 // Update a task
-router.put('/:id', authMiddleware, async (req, res) => {
+router.put('/:id', authMiddleware, projectTeamMiddleware, checkProjectPermission('manage_tasks'), async (req, res) => {
   try {
     console.log('=== Task Update Debug ===');
     const taskId = req.params.id;
@@ -272,7 +263,7 @@ router.put('/:id', authMiddleware, async (req, res) => {
 });
 
 // Delete a task
-router.delete('/:id', authMiddleware, async (req, res) => {
+router.delete('/:id', authMiddleware, projectTeamMiddleware, checkProjectPermission('manage_tasks'), async (req, res) => {
   try {
     const task = await Task.findById(req.params.id);
     if (!task) return res.status(404).json({ message: 'Task not found' });

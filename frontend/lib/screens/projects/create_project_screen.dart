@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
@@ -10,6 +11,7 @@ import '../../models/team_model.dart';
 import '../../services/team_service.dart';
 import '../../screens/teams/team_hierarchy_screen.dart';
 import '../../services/auth_service.dart';
+import 'dart:convert';
 
 class CreateProjectScreen extends StatefulWidget {
   final Project? project; // If provided, we're editing an existing project
@@ -56,7 +58,7 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
     '#4527A0', // Deep Purple
   ];
 
-  final ProjectService _projectService = ProjectService();
+  final ProjectService _projectService = ProjectService(Dio(), AuthService());
   List<User> _availableUsers = [];
   List<User> _filteredUsers = [];
   List<String> _selectedMemberIds = [];
@@ -179,22 +181,42 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
     setState(() => _isLoading = true);
 
     try {
+      // Get current user ID
+      final currentUserId = await _authService.getCurrentUserId();
+      if (currentUserId == null) {
+        throw Exception('Could not get current user ID');
+      }
+
+      // Build members array as a list of user IDs for the backend to process
+      // Include the current user ID as they are the project creator/manager
+      final List<String> memberIdsToSend = List.from(_selectedMemberIds);
+      if (!memberIdsToSend.contains(currentUserId)) {
+        memberIdsToSend.add(currentUserId);
+      }
+
       final projectData = {
         'title': _titleController.text,
         'description': _descriptionController.text,
         'deadline': _deadline?.toIso8601String(),
-        'members': _selectedMemberIds,
+        // Send only the list of user IDs
+        'members': memberIdsToSend,
         'progress': 0,
         'totalTasks': 0,
         'completedTasks': 0,
-        'boards': [],
+        'boards': widget.project?.boardIds ?? [],
         'color': _selectedColor,
         'status': 'To Do',
         'type': _projectType,
         if (_projectType == 'team') 'team': _selectedTeamId,
       };
 
-      print('Creating/Updating project with data: $projectData');
+      // Remove team field for personal projects
+      if (_projectType == 'personal') {
+        projectData.remove('team');
+      }
+
+      print('\n=== Creating/Updating Project ===');
+      print('Project Data: ${json.encode(projectData)}');
 
       if (widget.project != null) {
         // Update existing project
@@ -219,6 +241,7 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
         Navigator.pop(context, true); // Return true to indicate success
       }
     } catch (e) {
+      print('Error saving project: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Failed to save project: $e')),

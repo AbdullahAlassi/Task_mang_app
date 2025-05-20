@@ -85,6 +85,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         country: _countryController.text,
         phoneNumber: _phoneController.text,
         profilePicture: _profileImagePath,
+        createdAt: widget.user.createdAt,
+        updatedAt: DateTime.now(),
       );
 
       await _userService.updateUser(updatedUser);

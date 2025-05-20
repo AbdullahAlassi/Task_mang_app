@@ -6,6 +6,10 @@ const Task = require('../models/taskModel');
 const authMiddleware = require('../middleware/auth');
 const Notification = require('../models/notificationModel');
 const boardController = require('../controllers/boardController');
+const projectTeamMiddleware = require('../middleware/projectTeamMiddleware');
+const checkProjectPermission = require('../middleware/checkProjectPermission');
+const mongoose = require('mongoose');
+const { protect, authorize } = require('../middleware/auth');
 
 // Helper function to update project task counts
 async function updateProjectTaskCounts(projectId) {
@@ -33,7 +37,7 @@ async function updateProjectTaskCounts(projectId) {
 }
 
 // Create a new board
-router.post('/projects/:projectId/boards', authMiddleware, async (req, res) => {
+router.post('/projects/:projectId/boards', authMiddleware, projectTeamMiddleware, checkProjectPermission('manage_boards'), async (req, res) => {
   try {
     console.log('=== Board Creation Debug ===');
     console.log('Project ID:', req.params.projectId);
@@ -54,7 +58,7 @@ router.post('/projects/:projectId/boards', authMiddleware, async (req, res) => {
     console.log('Creating new board...');
     const newBoard = new Board({ 
       title, 
-      project: project._id, 
+      project: project._id,
       deadline: deadline ? new Date(deadline) : undefined,
       members: assignedTo || [],
       status: status || 'To Do',
@@ -128,7 +132,7 @@ router.get('/project/:projectId', authMiddleware, async (req, res) => {
 });
 
 // Update a board
-router.put('/:id', authMiddleware, async (req, res) => {
+router.put('/:id', authMiddleware, projectTeamMiddleware, checkProjectPermission('manage_boards'), async (req, res) => {
   try {
     const { title, deadline, assignedTo } = req.body;
     const board = await Board.findById(req.params.id);
@@ -172,24 +176,43 @@ router.put('/:id', authMiddleware, async (req, res) => {
 // Delete a board
 router.delete('/:id', authMiddleware, async (req, res) => {
   try {
-    const board = await Board.findById(req.params.id);
-    if (!board) return res.status(404).json({ message: 'Board not found' });
+    const boardId = req.params.id;
+    const userId = req.user.id;
 
-    // Remove board reference from project
-    await Project.findByIdAndUpdate(
-      board.project,
-      { $pull: { boards: board._id } }
-    );
+    console.log('Delete Request - Board ID:', boardId, '| User ID:', userId);
 
-    // Delete the board and its tasks
-    await Board.findByIdAndDelete(req.params.id);
-    
-    // Update project task counts
-    await updateProjectTaskCounts(board.project);
-    
-    res.status(200).json({ message: 'Board deleted successfully' });
+    if (!mongoose.Types.ObjectId.isValid(boardId)) {
+      return res.status(400).json({ message: 'Invalid board ID format' });
+    }
+
+    const board = await Board.findById(boardId);
+    if (!board) {
+      return res.status(404).json({ message: 'Board not found' });
+    }
+
+    const project = await Project.findById(board.project);
+    if (!project) {
+      return res.status(404).json({ message: 'Associated project not found' });
+    }
+
+    if (project.manager.toString() !== userId) {
+      return res.status(403).json({ message: 'Only the project owner can delete this board' });
+    }
+
+    // Delete all tasks linked to this board
+    await Task.deleteMany({ board: board._id });
+
+    // Remove the board from the project
+    project.boards.pull(board._id);
+    await project.save();
+
+    // Delete the board
+    await Board.findByIdAndDelete(boardId);
+
+    return res.status(200).json({ message: 'Board deleted successfully' });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Board deletion error:', error);
+    return res.status(500).json({ message: 'Failed to delete board', error: error.message });
   }
 });
 

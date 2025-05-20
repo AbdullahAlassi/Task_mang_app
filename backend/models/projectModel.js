@@ -5,7 +5,25 @@ const projectSchema = new mongoose.Schema({
   description: { type: String },
   deadline: { type: Date },
   manager: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  members: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+  members: [
+    {
+      userId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+        required: true
+      },
+      role: {
+        type: String,
+        enum: ['owner', 'admin', 'member', 'viewer'],
+        default: 'viewer'
+      },
+      joinedAt: {
+        type: Date,
+        default: Date.now
+      }
+    }
+  ],
+  
   boards: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Board' }],
   status: { type: String, enum: ['To Do', 'In Progress', 'Completed', 'Archived'], default: 'To Do' },
   progress: { type: Number, default: 0 },

@@ -1,9 +1,12 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:frontend/services/auth_service.dart';
 import 'package:intl/intl.dart';
 import '../../config/app_colors.dart';
 import '../../models/project_model.dart';
 import '../../models/task_model.dart';
 import '../../models/board_model.dart';
+import '../../models/user_model.dart';
 import '../../services/project_service.dart';
 import '../../services/task_service.dart';
 import '../../services/board_service.dart';
@@ -25,15 +28,19 @@ class ProjectDetailScreen extends StatefulWidget {
 }
 
 class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
-  final ProjectService _projectService = ProjectService();
+  final ProjectService _projectService = ProjectService(Dio(), AuthService());
   final TaskService _taskService = TaskService();
   final BoardService _boardService = BoardService();
   bool _isLoading = true;
   Project? _project;
   List<Task> _tasks = [];
   bool _isManager = false;
+  bool _isOwner = false;
+  bool _canEdit = false;
+  bool _canDelete = false;
   List<Board> _boards = [];
   String? _error;
+  String? _userRole;
 
   @override
   void initState() {
@@ -55,11 +62,38 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
 
       if (!mounted) return;
 
+      // Determine user's role and permissions
+      if (currentUserId == null) {
+        throw Exception('Could not get current user ID');
+      }
+
+      final userMember = project.members.firstWhere(
+        (m) => m.userId == currentUserId,
+        orElse: () => ProjectMember(
+          userId: currentUserId,
+          role: 'viewer',
+          joinedAt: DateTime.now(),
+          user: User(
+            id: currentUserId,
+            name: '',
+            email: '',
+            profilePicture: '',
+            createdAt: DateTime.now(),
+            updatedAt: DateTime.now(),
+          ),
+        ),
+      );
+
+      _userRole = userMember.role;
+      _isManager = project.managerId == currentUserId;
+      _isOwner = _isManager || _userRole == 'owner';
+      _canEdit = _isOwner || _userRole == 'editor';
+      _canDelete = _isOwner;
+
       setState(() {
         _project = project;
         _boards = boards;
         _tasks = tasks;
-        _isManager = project.managerId == currentUserId;
         _isLoading = false;
       });
     } catch (e) {
@@ -457,17 +491,18 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
       ),
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        leading: Checkbox(
-          value: task.isCompleted,
-          onChanged: (value) {
-            // Update task status
-            _updateTaskStatus(task.id, value ?? false);
-          },
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(4),
-          ),
-          activeColor: AppColors.primaryColor,
-        ),
+        leading: _canEdit
+            ? Checkbox(
+                value: task.isCompleted,
+                onChanged: (value) {
+                  _updateTaskStatus(task.id, value ?? false);
+                },
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                activeColor: AppColors.primaryColor,
+              )
+            : null,
         title: Text(
           task.title,
           style: TextStyle(
@@ -477,15 +512,35 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
             decoration: task.isCompleted ? TextDecoration.lineThrough : null,
           ),
         ),
-        subtitle: task.deadline != null
-            ? Text(
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (task.deadline != null)
+              Text(
                 'Due: ${DateFormat('MMM d').format(task.deadline!)}',
                 style: const TextStyle(
                   fontSize: 14,
                   color: AppColors.secondaryTextColor,
                 ),
-              )
-            : null,
+              ),
+            if (_userRole != null)
+              Container(
+                margin: const EdgeInsets.only(top: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: AppColors.primaryColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  _userRole!.toUpperCase(),
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: AppColors.primaryColor,
+                  ),
+                ),
+              ),
+          ],
+        ),
         trailing: IconButton(
           icon: const Icon(Icons.arrow_forward_ios, size: 16),
           onPressed: () {
@@ -568,28 +623,21 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              ListTile(
-                leading: const Icon(Icons.edit, color: AppColors.primaryColor),
-                title: const Text('Edit Project',
-                    style: TextStyle(color: AppColors.textColor)),
-                onTap: () async {
-                  Navigator.pop(context);
-                  if (!_isManager) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                          content: Text(
-                              'Only the project manager can edit the project.')),
-                    );
-                    return;
-                  }
-                  // Navigate to edit project screen
-                  Navigator.pushNamed(
-                    context,
-                    '/edit-project',
-                    arguments: _project,
-                  ).then((_) => _loadProjectDetails());
-                },
-              ),
+              if (_canEdit)
+                ListTile(
+                  leading:
+                      const Icon(Icons.edit, color: AppColors.primaryColor),
+                  title: const Text('Edit Project',
+                      style: TextStyle(color: AppColors.textColor)),
+                  onTap: () async {
+                    Navigator.pop(context);
+                    Navigator.pushNamed(
+                      context,
+                      '/edit-project',
+                      arguments: _project,
+                    ).then((_) => _loadProjectDetails());
+                  },
+                ),
               ListTile(
                 leading: const Icon(Icons.view_kanban,
                     color: AppColors.primaryColor),
@@ -606,30 +654,22 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
                   ).then((_) => _loadProjectDetails());
                 },
               ),
-              ListTile(
-                leading: const Icon(Icons.delete, color: Colors.red),
-                title: const Text('Delete Project',
-                    style: TextStyle(color: AppColors.textColor)),
-                onTap: () async {
-                  Navigator.pop(context);
-                  if (!_isManager) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                          content: Text(
-                              'Only the project manager can delete the project.')),
-                    );
-                    return;
-                  }
-                  _confirmDeleteProject();
-                },
-              ),
+              if (_canDelete)
+                ListTile(
+                  leading: const Icon(Icons.delete, color: Colors.red),
+                  title: const Text('Delete Project',
+                      style: TextStyle(color: AppColors.textColor)),
+                  onTap: () async {
+                    Navigator.pop(context);
+                    _confirmDeleteProject();
+                  },
+                ),
               ListTile(
                 leading: const Icon(Icons.share, color: AppColors.primaryColor),
                 title: const Text('Share Project',
                     style: TextStyle(color: AppColors.textColor)),
                 onTap: () {
                   Navigator.pop(context);
-                  // Implement share functionality
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
                         content: Text('Share functionality coming soon')),
@@ -664,9 +704,8 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
               onPressed: () async {
                 Navigator.pop(context);
                 try {
-                  final success =
-                      await _projectService.deleteProject(_project!.id);
-                  if (success && mounted) {
+                  await _projectService.deleteProject(_project!.id);
+                  if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
                           content: Text('Project deleted successfully')),

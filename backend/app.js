@@ -26,7 +26,7 @@ app.use('/api/tasks', require('./routes/taskRoutes'));
 app.use('/api/teams', require('./routes/teamRoutes'));
 app.use('/api/calendar', require('./routes/calendarRoutes'));
 app.use('/api/notifications', require('./routes/notificationRoutes'));
-
+app.use('/api/project-teams', require('./routes/projectTeamRoutes'));
 
 // 🔹 Error Handling Middleware
 const errorMiddleware = require('./middleware/errorMiddleware');

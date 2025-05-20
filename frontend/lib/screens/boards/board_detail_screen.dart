@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:frontend/screens/tasks/task_detail_screen.dart';
 import 'package:intl/intl.dart';
 import '../../config/app_colors.dart';
 import '../../models/board_model.dart';
@@ -6,6 +7,11 @@ import '../../models/task_model.dart';
 import '../../services/board_service.dart';
 import '../../services/task_service.dart';
 import '../tasks/create_task_screen.dart';
+import '../../models/project_model.dart';
+import '../../services/project_service.dart';
+import '../../utils/project_permissions.dart';
+import 'package:dio/dio.dart';
+import '../../services/auth_service.dart';
 
 class BoardDetailScreen extends StatefulWidget {
   final Board board;
@@ -23,6 +29,9 @@ class _BoardDetailScreenState extends State<BoardDetailScreen> {
   bool _isLoading = true;
   late Board _board;
   List<Task> _tasks = [];
+  Project? _project;
+  ProjectRole? _currentUserRole;
+  final ProjectService _projectService = ProjectService(Dio(), AuthService());
 
   final _boardService = BoardService();
   final _taskService = TaskService();
@@ -41,10 +50,14 @@ class _BoardDetailScreenState extends State<BoardDetailScreen> {
     try {
       final board = await _boardService.getBoardDetails(widget.board.id);
       final tasks = await _taskService.getTasksForBoard(widget.board.id);
-
+      final project = await _projectService.getProject(board.projectId);
+      final userRole = await project.getCurrentUserRole();
+      final role = ProjectPermissions.standardizeRole(userRole);
       setState(() {
         _board = board;
         _tasks = tasks;
+        _project = project;
+        _currentUserRole = role;
         _isLoading = false;
       });
     } catch (e) {
@@ -76,33 +89,38 @@ class _BoardDetailScreenState extends State<BoardDetailScreen> {
         elevation: 0,
         title: Text(_board.title),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.edit),
-            onPressed: () {
-              // Navigate to edit board screen
-            },
-          ),
+          if (_currentUserRole != null &&
+              ProjectPermissions.canManageBoards(_currentUserRole!))
+            IconButton(
+              icon: const Icon(Icons.edit),
+              onPressed: () {
+                // Navigate to edit board screen
+              },
+            ),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => CreateTaskScreen(
-                projectId: _board.projectId,
-                boardId: _board.id,
-              ),
-            ),
-          ).then((value) {
-            if (value == true) {
-              _loadData();
-            }
-          });
-        },
-        backgroundColor: AppColors.primaryColor,
-        child: const Icon(Icons.add),
-      ),
+      floatingActionButton: (_currentUserRole != null &&
+              ProjectPermissions.canCreateTasks(_currentUserRole!))
+          ? FloatingActionButton(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => CreateTaskScreen(
+                      projectId: _board.projectId,
+                      boardId: _board.id,
+                    ),
+                  ),
+                ).then((value) {
+                  if (value == true) {
+                    _loadData();
+                  }
+                });
+              },
+              backgroundColor: AppColors.primaryColor,
+              child: const Icon(Icons.add),
+            )
+          : null,
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -113,22 +131,6 @@ class _BoardDetailScreenState extends State<BoardDetailScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // Board Type Badge
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: _board.getBoardTypeColor().withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    _board.type,
-                    style: TextStyle(
-                      color: _board.getBoardTypeColor(),
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 8),
 
                 // Deadline
                 if (_board.deadline != null)
@@ -186,21 +188,25 @@ class _BoardDetailScreenState extends State<BoardDetailScreen> {
                         ),
                         const SizedBox(height: 24),
                         ElevatedButton.icon(
-                          onPressed: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => CreateTaskScreen(
-                                  projectId: _board.projectId,
-                                  boardId: _board.id,
-                                ),
-                              ),
-                            ).then((value) {
-                              if (value == true) {
-                                _loadData();
-                              }
-                            });
-                          },
+                          onPressed: (_currentUserRole != null &&
+                                  ProjectPermissions.canCreateTasks(
+                                      _currentUserRole!))
+                              ? () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => CreateTaskScreen(
+                                        projectId: _board.projectId,
+                                        boardId: _board.id,
+                                      ),
+                                    ),
+                                  ).then((value) {
+                                    if (value == true) {
+                                      _loadData();
+                                    }
+                                  });
+                                }
+                              : null,
                           icon: const Icon(Icons.add),
                           label: const Text('Create Task'),
                           style: ElevatedButton.styleFrom(
@@ -238,9 +244,8 @@ class _BoardDetailScreenState extends State<BoardDetailScreen> {
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) => CreateTaskScreen(
-                projectId: widget.board.projectId,
-                boardId: widget.board.id,
+              builder: (context) => TaskDetailScreen(
+                taskId: task.id,
               ),
             ),
           );
@@ -282,6 +287,35 @@ class _BoardDetailScreenState extends State<BoardDetailScreen> {
                       ),
                     ),
                   ),
+                  if (_currentUserRole != null &&
+                      ProjectPermissions.canManageTasks(_currentUserRole!))
+                    PopupMenuButton<String>(
+                      icon: const Icon(Icons.more_vert,
+                          color: Colors.white, size: 18),
+                      color: const Color(0xFF35383F),
+                      onSelected: (value) {
+                        switch (value) {
+                          case 'edit':
+                            _editTask(task, _board);
+                            break;
+                          case 'delete':
+                            _deleteTask(task, _board);
+                            break;
+                        }
+                      },
+                      itemBuilder: (context) => [
+                        const PopupMenuItem(
+                          value: 'edit',
+                          child: Text('Edit',
+                              style: TextStyle(color: Colors.white)),
+                        ),
+                        const PopupMenuItem(
+                          value: 'delete',
+                          child: Text('Delete',
+                              style: TextStyle(color: Colors.red)),
+                        ),
+                      ],
+                    ),
                 ],
               ),
 
@@ -386,6 +420,66 @@ class _BoardDetailScreenState extends State<BoardDetailScreen> {
         return Colors.green;
       default:
         return Colors.purple;
+    }
+  }
+
+  void _editTask(Task task, Board board) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => CreateTaskScreen(
+          projectId: board.projectId,
+          boardId: board.id,
+          taskId: task.id,
+        ),
+      ),
+    ).then((value) {
+      if (value == true) {
+        _loadData();
+      }
+    });
+  }
+
+  void _deleteTask(Task task, Board board) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.cardColor,
+        title: const Text('Delete Task',
+            style: TextStyle(color: AppColors.textColor)),
+        content: Text(
+          'Are you sure you want to delete "${task.title}"? This action cannot be undone.',
+          style: const TextStyle(color: AppColors.textColor),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      try {
+        await _taskService.deleteTask(task.id);
+        _loadData();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Task deleted successfully')),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Failed to delete task: $e')),
+          );
+        }
+      }
     }
   }
 }
