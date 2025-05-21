@@ -1,4 +1,3 @@
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:frontend/services/auth_service.dart';
 import 'package:intl/intl.dart';
@@ -26,7 +25,7 @@ class TaskDetailScreen extends StatefulWidget {
 class _TaskDetailScreenState extends State<TaskDetailScreen> {
   final TaskService _taskService = TaskService();
   final BoardService _boardService = BoardService();
-  final ProjectService _projectService = ProjectService(Dio(), AuthService());
+  final ProjectService _projectService = ProjectService(AuthService());
   bool _isLoading = true;
   Task? _task;
   Board? _board;

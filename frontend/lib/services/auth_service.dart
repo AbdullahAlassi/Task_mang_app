@@ -9,8 +9,8 @@ import '../models/user_model.dart';
 import '../providers/auth_provider.dart';
 
 class AuthService {
-  //static const String baseUrl = 'http://10.0.2.2:3000/api';
-  static const String baseUrl = 'http://localhost:3003/api';
+  static const String baseUrl = 'http://10.0.2.2:3000/api';
+  //static const String baseUrl = 'http://localhost:3003/api';
   static const String _tokenKey = 'token';
   static const String _tokenExpiryKey = 'token_expiry';
 

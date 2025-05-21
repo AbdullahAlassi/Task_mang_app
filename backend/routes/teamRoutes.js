@@ -5,26 +5,33 @@ const User = require('../models/userModel');
 const authMiddleware = require('../middleware/auth');
 const { validateRequest, createTeamSchema } = require('../validators/validationSchemas');
 
+// Helper to check if user is team_leader
+async function isTeamLeader(team, userId) {
+  return team.members.some(m => m.user.toString() === userId && m.role === 'team_leader');
+}
+
 // Create a new team
 router.post('/', authMiddleware, async (req, res) => {
   const { name, description, type, parent } = req.body;
 
   try {
-    // Validate parent team if provided
     if (parent) {
       const parentTeam = await Team.findById(parent);
       if (!parentTeam) {
         return res.status(400).json({ error: 'Parent team not found' });
       }
+      if (!(await isTeamLeader(parentTeam, req.user.id))) {
+        return res.status(403).json({ message: 'Only the team leader can create a subteam.' });
+      }
     }
 
-    // Create new team with creator as manager and member
+    // Create new team with creator as team_leader and member
     const newTeam = new Team({
       name,
       description,
       type,
       manager: req.user.id,
-      members: [{ user: req.user.id }],
+      members: [{ user: req.user.id, role: 'team_leader' }],
       parent: parent || null,
       children: []
     });
@@ -40,7 +47,7 @@ router.post('/', authMiddleware, async (req, res) => {
 
     // Update user's team memberships
     await User.findByIdAndUpdate(req.user.id, {
-      $push: { teams: { team: newTeam._id, role: 'manager' } }
+      $push: { teams: { team: newTeam._id, role: 'team_leader' } }
     });
 
     // Populate parent and children info in response
@@ -119,6 +126,9 @@ router.put('/:id', authMiddleware, async (req, res) => {
     if (!team) {
       return res.status(404).json({ message: 'Team not found' });
     }
+    if (!(await isTeamLeader(team, req.user.id))) {
+      return res.status(403).json({ message: 'Only the team leader can edit the team.' });
+    }
 
     // Handle parent team change
     if (parent && parent !== team.parent?.toString()) {
@@ -166,6 +176,9 @@ router.delete('/:id', authMiddleware, async (req, res) => {
     if (!team) {
       return res.status(404).json({ message: 'Team not found' });
     }
+    if (!(await isTeamLeader(team, req.user.id))) {
+      return res.status(403).json({ message: 'Only the team leader can delete the team.' });
+    }
 
     // Remove from parent's children
     if (team.parent) {
@@ -185,7 +198,7 @@ router.delete('/:id', authMiddleware, async (req, res) => {
     await Team.deleteMany({ parent: team._id });
 
     // Delete the team
-    await team.remove();
+    await Team.findByIdAndDelete(team._id);
 
     res.status(200).json({ message: 'Team and sub-teams deleted successfully' });
   } catch (error) {
@@ -202,6 +215,9 @@ router.post('/:id/members', authMiddleware, async (req, res) => {
     const team = await Team.findById(req.params.id);
     if (!team) {
       return res.status(404).json({ message: 'Team not found' });
+    }
+    if (!(await isTeamLeader(team, req.user.id))) {
+      return res.status(403).json({ message: 'Only the team leader can add members.' });
     }
 
     // Check if user is already a member
@@ -244,6 +260,9 @@ router.delete('/:id/members/:userId', authMiddleware, async (req, res) => {
     if (!team) {
       return res.status(404).json({ message: 'Team not found' });
     }
+    if (!(await isTeamLeader(team, req.user.id))) {
+      return res.status(403).json({ message: 'Only the team leader can remove members.' });
+    }
 
     // Remove member from team
     team.members = team.members.filter(m => m.user.toString() !== req.params.userId);
@@ -275,11 +294,23 @@ router.put('/:id/members/:userId/role', authMiddleware, async (req, res) => {
     if (!team) {
       return res.status(404).json({ message: 'Team not found' });
     }
+    if (!(await isTeamLeader(team, req.user.id))) {
+      return res.status(403).json({ message: 'Only the team leader can update member roles.' });
+    }
 
     // Update member role in team
     const member = team.members.find(m => m.user.toString() === req.params.userId);
     if (!member) {
       return res.status(404).json({ message: 'Member not found in team' });
+    }
+
+    // If setting to team_leader, demote any existing team_leader to member
+    if (role === 'team_leader') {
+      team.members.forEach(m => {
+        if (m.role === 'team_leader') {
+          m.role = 'member';
+        }
+      });
     }
 
     member.role = role;
@@ -290,6 +321,18 @@ router.put('/:id/members/:userId/role', authMiddleware, async (req, res) => {
       { _id: req.params.userId, 'teams.team': team._id },
       { $set: { 'teams.$.role': role } }
     );
+
+    // If demoted someone, update their user doc as well
+    if (role === 'team_leader') {
+      for (const m of team.members) {
+        if (m.user.toString() !== req.params.userId && m.role === 'member') {
+          await User.updateOne(
+            { _id: m.user, 'teams.team': team._id },
+            { $set: { 'teams.$.role': 'member' } }
+          );
+        }
+      }
+    }
 
     const updatedTeam = await Team.findById(req.params.id)
       .populate('parent', 'name')

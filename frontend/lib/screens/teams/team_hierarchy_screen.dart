@@ -10,6 +10,7 @@ import '../../widgets/horizontal_team_tree.dart';
 import '../../services/auth_service.dart';
 import '../../services/task_service.dart';
 import '../../widgets/add_sub_team_dialog.dart';
+import '../../main.dart';
 
 class TeamHierarchyScreen extends StatefulWidget {
   const TeamHierarchyScreen({Key? key}) : super(key: key);
@@ -56,6 +57,7 @@ class _TeamHierarchyScreenState extends State<TeamHierarchyScreen> {
           teamTaskCounts[team.id] = 0;
         }
       }
+      if (!mounted) return;
       setState(() {
         _currentUserId = userId;
         _teams = filteredTeams;
@@ -66,11 +68,13 @@ class _TeamHierarchyScreenState extends State<TeamHierarchyScreen> {
     } catch (e) {
       print('Error loading data: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        rootScaffoldMessengerKey.currentState?.showSnackBar(
           SnackBar(content: Text('Failed to load data: $e')),
         );
+        setState(() => _isLoading = false);
       }
-      setState(() => _isLoading = false);
+    } finally {
+      if (mounted && _isLoading) setState(() => _isLoading = false);
     }
   }
 
@@ -110,6 +114,7 @@ class _TeamHierarchyScreenState extends State<TeamHierarchyScreen> {
                   ),
                 );
                 if (result == true && mounted) {
+                  setState(() {});
                   await _loadData();
                 }
               },
@@ -154,48 +159,7 @@ class _TeamHierarchyScreenState extends State<TeamHierarchyScreen> {
               ),
               onTap: () async {
                 Navigator.pop(context);
-                final confirm = await showDialog<bool>(
-                  context: context,
-                  barrierDismissible: false,
-                  builder: (context) => AlertDialog(
-                    title: const Text('Delete Team'),
-                    content: const Text(
-                      'Are you sure you want to delete this team? This action cannot be undone.',
-                    ),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(context, false),
-                        child: const Text('Cancel'),
-                      ),
-                      TextButton(
-                        onPressed: () => Navigator.pop(context, true),
-                        child: const Text(
-                          'Delete',
-                          style: TextStyle(color: Colors.red),
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-
-                if (confirm == true && mounted) {
-                  try {
-                    await _teamService.deleteTeam(team.id);
-                    await _loadData();
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                            content: Text('Team deleted successfully')),
-                      );
-                    }
-                  } catch (e) {
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Failed to delete team: $e')),
-                      );
-                    }
-                  }
-                }
+                await _handleDeleteTeam(team, context);
               },
             ),
             const SizedBox(height: 8),
@@ -205,59 +169,156 @@ class _TeamHierarchyScreenState extends State<TeamHierarchyScreen> {
     );
   }
 
-  void _showAddMemberDialog() {
-    final availableUsers = _users
-        .where((user) =>
-            !_selectedTeam!.members.any((member) => member.userId == user.id))
-        .toList();
-
-    showDialog(
+  Future<void> _showAddMemberDialogForSelectedTeam() async {
+    if (_selectedTeam == null) return;
+    String searchQuery = '';
+    List<User> filteredUsers = [];
+    final result = await showDialog<dynamic>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Add Team Member'),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: ListView.builder(
-            shrinkWrap: true,
-            itemCount: availableUsers.length,
-            itemBuilder: (context, index) {
-              final user = availableUsers[index];
-              return ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: AppColors.primaryColor,
-                  child: Text(
-                    user.name[0].toUpperCase(),
-                    style: const TextStyle(color: Colors.white),
-                  ),
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            filteredUsers = _users
+                .where((user) =>
+                    !_selectedTeam!.members
+                        .any((member) => member.userId == user.id) &&
+                    (user.name
+                            .toLowerCase()
+                            .contains(searchQuery.toLowerCase()) ||
+                        user.email
+                            .toLowerCase()
+                            .contains(searchQuery.toLowerCase())))
+                .toList();
+            return AlertDialog(
+              title: const Text('Add Team Member'),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      decoration: const InputDecoration(
+                        labelText: 'Search by name or email',
+                        prefixIcon: Icon(Icons.search),
+                      ),
+                      onChanged: (value) {
+                        setState(() {
+                          searchQuery = value;
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    if (searchQuery.isNotEmpty)
+                      filteredUsers.isEmpty
+                          ? const Text('No users found.')
+                          : SizedBox(
+                              height: 250,
+                              child: ListView.builder(
+                                shrinkWrap: true,
+                                itemCount: filteredUsers.length,
+                                itemBuilder: (context, index) {
+                                  final user = filteredUsers[index];
+                                  return ListTile(
+                                    leading: CircleAvatar(
+                                      backgroundColor: AppColors.primaryColor,
+                                      child: Text(
+                                        user.name.isNotEmpty
+                                            ? user.name[0].toUpperCase()
+                                            : '?',
+                                        style: const TextStyle(
+                                            color: Colors.white),
+                                      ),
+                                    ),
+                                    title: Text(user.name),
+                                    subtitle: Text(user.email),
+                                    onTap: () async {
+                                      try {
+                                        await _teamService.addTeamMember(
+                                          _selectedTeam!.id,
+                                          user.id,
+                                          'member',
+                                        );
+                                        Navigator.pop(
+                                            context, {'success': true});
+                                      } catch (e) {
+                                        String errorMsg =
+                                            'Failed to add member: $e';
+                                        if (e.toString().contains('403')) {
+                                          final match =
+                                              RegExp(r'message":\s*"([^"]+)')
+                                                  .firstMatch(e.toString());
+                                          if (match != null)
+                                            errorMsg = match.group(1)!;
+                                        }
+                                        Navigator.pop(context, {
+                                          'success': false,
+                                          'error': errorMsg
+                                        });
+                                      }
+                                    },
+                                  );
+                                },
+                              ),
+                            ),
+                  ],
                 ),
-                title: Text(user.name),
-                subtitle: Text(user.email),
-                onTap: () async {
-                  Navigator.pop(context);
-                  try {
-                    await _teamService.addTeamMember(
-                      _selectedTeam!.id,
-                      user.id,
-                      'member',
-                    );
-                    await _loadData();
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                            content: Text('Member added successfully')),
-                      );
-                    }
-                  } catch (e) {
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Failed to add member: $e')),
-                      );
-                    }
-                  }
-                },
-              );
-            },
-          ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, {'success': false}),
+                  child: const Text('Cancel'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+    if (result is Map && result['success'] == true) {
+      setState(() {});
+      await _loadData();
+      if (mounted) {
+        rootScaffoldMessengerKey.currentState?.showSnackBar(
+          const SnackBar(content: Text('Member added successfully')),
+        );
+      }
+    } else if (result is Map &&
+        result['success'] == false &&
+        result['error'] != null &&
+        mounted) {
+      rootScaffoldMessengerKey.currentState?.showSnackBar(
+        SnackBar(content: Text(result['error'])),
+      );
+    }
+  }
+
+  Future<void> _showEditRoleDialog(TeamMember member) async {
+    if (_selectedTeam == null) return;
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('Update Member Role'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              title: const Text('Team Leader'),
+              selected: member.role == 'team_leader',
+              onTap: () async {
+                Navigator.pop(context);
+                await _updateMemberRole(member, 'team_leader');
+              },
+            ),
+            ListTile(
+              title: const Text('Member'),
+              selected: member.role == 'member',
+              onTap: () async {
+                Navigator.pop(context);
+                await _updateMemberRole(member, 'member');
+              },
+            ),
+          ],
         ),
         actions: [
           TextButton(
@@ -269,8 +330,149 @@ class _TeamHierarchyScreenState extends State<TeamHierarchyScreen> {
     );
   }
 
+  Future<void> _updateMemberRole(TeamMember member, String newRole) async {
+    if (_selectedTeam == null) return;
+    try {
+      await _teamService.updateTeamMemberRole(
+        _selectedTeam!.id,
+        member.userId,
+        newRole,
+      );
+      if (mounted) {
+        rootScaffoldMessengerKey.currentState?.showSnackBar(
+          const SnackBar(content: Text('Member role updated successfully')),
+        );
+        await _loadData();
+      }
+    } catch (e) {
+      if (mounted) {
+        String errorMsg = 'Failed to update member role: $e';
+        if (e is Exception && e.toString().contains('403')) {
+          final match =
+              RegExp(r'message":\s*"([^"]+)').firstMatch(e.toString());
+          if (match != null) errorMsg = match.group(1)!;
+        }
+        rootScaffoldMessengerKey.currentState?.showSnackBar(
+          SnackBar(content: Text(errorMsg)),
+        );
+      }
+    }
+  }
+
+  Future<void> _removeMember(TeamMember member) async {
+    if (_selectedTeam == null) return;
+    final confirm = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('Remove Member'),
+        content: const Text(
+            'Are you sure you want to remove this member from the team?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Remove', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+    if (confirm == true && mounted) {
+      try {
+        await _teamService.removeTeamMember(
+          _selectedTeam!.id,
+          member.userId,
+        );
+        if (mounted) {
+          rootScaffoldMessengerKey.currentState?.showSnackBar(
+            const SnackBar(content: Text('Member removed successfully')),
+          );
+          setState(() {});
+          await _loadData();
+        }
+      } catch (e) {
+        if (mounted) {
+          String errorMsg = 'Failed to remove member: $e';
+          if (e is Exception && e.toString().contains('403')) {
+            final match =
+                RegExp(r'message":\s*"([^"]+)').firstMatch(e.toString());
+            if (match != null) errorMsg = match.group(1)!;
+          }
+          rootScaffoldMessengerKey.currentState?.showSnackBar(
+            SnackBar(content: Text(errorMsg)),
+          );
+        }
+      }
+    }
+  }
+
   void _onTeamSelected(Team team) {
     setState(() => _selectedTeam = team);
+  }
+
+  Future<void> _handleDeleteTeam(Team team, BuildContext context) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Team'),
+        content: const Text(
+          'Are you sure you want to delete this team? This action cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true && mounted) {
+      try {
+        setState(() => _isLoading = true);
+        await _teamService.deleteTeam(team.id);
+        await _loadData();
+        if (mounted) {
+          rootScaffoldMessengerKey.currentState?.showSnackBar(
+            const SnackBar(content: Text('Team deleted successfully')),
+          );
+        }
+      } catch (e) {
+        print('Delete team error: $e');
+        if (mounted) {
+          String errorMessage = 'Failed to delete team';
+          if (e is Exception) {
+            errorMessage = e.toString().replaceAll('Exception: ', '');
+          }
+          rootScaffoldMessengerKey.currentState?.showSnackBar(
+            SnackBar(
+              content: Text(errorMessage),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 5),
+              action: SnackBarAction(
+                label: 'Dismiss',
+                textColor: Colors.white,
+                onPressed: () {
+                  rootScaffoldMessengerKey.currentState?.hideCurrentSnackBar();
+                },
+              ),
+            ),
+          );
+        }
+      } finally {
+        if (mounted) {
+          setState(() => _isLoading = false);
+        }
+      }
+    }
   }
 
   @override
@@ -365,6 +567,7 @@ class _TeamHierarchyScreenState extends State<TeamHierarchyScreen> {
                                 selectedTeam: _selectedTeam,
                                 teamTaskCounts: _teamTaskCounts,
                                 onDataChanged: _loadData,
+                                onDeleteTeam: _handleDeleteTeam,
                               ),
                             ),
                             Expanded(
@@ -379,6 +582,10 @@ class _TeamHierarchyScreenState extends State<TeamHierarchyScreen> {
                                         team: _selectedTeam!,
                                         users: _users,
                                         onMemberChanged: _loadData,
+                                        onAddMember:
+                                            _showAddMemberDialogForSelectedTeam,
+                                        onEditRole: _showEditRoleDialog,
+                                        onRemoveMember: _removeMember,
                                       ),
                                   ],
                                 ),
@@ -396,6 +603,7 @@ class _TeamHierarchyScreenState extends State<TeamHierarchyScreen> {
                               selectedTeam: _selectedTeam,
                               teamTaskCounts: _teamTaskCounts,
                               onDataChanged: _loadData,
+                              onDeleteTeam: _handleDeleteTeam,
                             ),
                             Expanded(
                               child: SingleChildScrollView(
@@ -408,6 +616,10 @@ class _TeamHierarchyScreenState extends State<TeamHierarchyScreen> {
                                         team: _selectedTeam!,
                                         users: _users,
                                         onMemberChanged: _loadData,
+                                        onAddMember:
+                                            _showAddMemberDialogForSelectedTeam,
+                                        onEditRole: _showEditRoleDialog,
+                                        onRemoveMember: _removeMember,
                                       ),
                                   ],
                                 ),
@@ -429,6 +641,7 @@ class HorizontalTeamTree extends StatelessWidget {
   final Team? selectedTeam;
   final Map<String, int> teamTaskCounts;
   final VoidCallback onDataChanged;
+  final Future<void> Function(Team, BuildContext) onDeleteTeam;
 
   const HorizontalTeamTree({
     Key? key,
@@ -437,6 +650,7 @@ class HorizontalTeamTree extends StatelessWidget {
     required this.selectedTeam,
     required this.teamTaskCounts,
     required this.onDataChanged,
+    required this.onDeleteTeam,
   }) : super(key: key);
 
   List<Team> _getChildren(String? parentId) {
@@ -471,34 +685,7 @@ class HorizontalTeamTree extends StatelessWidget {
         }
         break;
       case 'delete':
-        final confirm = await showDialog<bool>(
-          context: context,
-          barrierDismissible: false,
-          builder: (context) => AlertDialog(
-            title: const Text('Delete Team'),
-            content: const Text(
-              'Are you sure you want to delete this team? This action cannot be undone.',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('Cancel'),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pop(context, true),
-                child: const Text(
-                  'Delete',
-                  style: TextStyle(color: Colors.red),
-                ),
-              ),
-            ],
-          ),
-        );
-        if (confirm == true && context.mounted) {
-          final state =
-              context.findAncestorStateOfType<_TeamHierarchyScreenState>();
-          state?._showTeamOptions(team);
-        }
+        await onDeleteTeam(team, context);
         break;
       case 'manage':
         await Navigator.push(
@@ -781,11 +968,17 @@ class TeamMemberList extends StatelessWidget {
   final Team team;
   final List<User> users;
   final VoidCallback onMemberChanged;
+  final VoidCallback onAddMember;
+  final Future<void> Function(TeamMember) onEditRole;
+  final Future<void> Function(TeamMember) onRemoveMember;
   const TeamMemberList({
     Key? key,
     required this.team,
     required this.users,
     required this.onMemberChanged,
+    required this.onAddMember,
+    required this.onEditRole,
+    required this.onRemoveMember,
   }) : super(key: key);
 
   @override
@@ -826,14 +1019,7 @@ class TeamMemberList extends StatelessWidget {
                   icon: const Icon(Icons.person_add,
                       color: AppColors.primaryColor),
                   tooltip: 'Add Member',
-                  onPressed: () {
-                    // You can call a callback or show a dialog here
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                          content:
-                              Text('Add member dialog not implemented here.')),
-                    );
-                  },
+                  onPressed: onAddMember,
                 ),
               ],
             ),
@@ -882,17 +1068,19 @@ class TeamMemberList extends StatelessWidget {
                               padding: const EdgeInsets.symmetric(
                                   horizontal: 8, vertical: 4),
                               decoration: BoxDecoration(
-                                color: member.role == 'team_lead'
+                                color: member.role == 'team_leader'
                                     ? Colors.blue
                                     : AppColors.primaryColor,
                                 borderRadius: BorderRadius.circular(8),
                               ),
                               child: Tooltip(
-                                message: member.role == 'team_lead'
-                                    ? 'Team Lead'
+                                message: member.role == 'team_leader'
+                                    ? 'Team Leader'
                                     : 'Member',
                                 child: Text(
-                                  member.role.toUpperCase(),
+                                  member.role == 'team_leader'
+                                      ? 'Team Leader'
+                                      : 'Member',
                                   style: const TextStyle(
                                       color: Colors.white,
                                       fontSize: 12,
@@ -904,13 +1092,12 @@ class TeamMemberList extends StatelessWidget {
                             PopupMenuButton<String>(
                               icon: const Icon(Icons.more_vert,
                                   color: AppColors.secondaryTextColor),
-                              onSelected: (value) {
-                                // TODO: Implement remove/edit role actions
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                      content: Text(
-                                          'Action "$value" not implemented.')),
-                                );
+                              onSelected: (value) async {
+                                if (value == 'edit') {
+                                  await onEditRole(member);
+                                } else if (value == 'remove') {
+                                  await onRemoveMember(member);
+                                }
                               },
                               itemBuilder: (context) => [
                                 const PopupMenuItem(

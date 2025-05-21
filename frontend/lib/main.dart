@@ -11,6 +11,9 @@ import 'screens/projects/projects_screen.dart';
 import 'screens/projects/create_project_screen.dart';
 import 'models/project_model.dart';
 
+final GlobalKey<ScaffoldMessengerState> rootScaffoldMessengerKey =
+    GlobalKey<ScaffoldMessengerState>();
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final authProvider = AuthProvider();
@@ -32,6 +35,7 @@ class MyApp extends StatelessWidget {
       title: 'Task Management App',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.darkTheme,
+      scaffoldMessengerKey: rootScaffoldMessengerKey,
       initialRoute: '/',
       routes: {
         '/': (context) => const SplashScreen(),

@@ -10,7 +10,8 @@ const TeamSchema = new mongoose.Schema({
   },
   manager: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   members: [{ 
-    user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
+    user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    role: { type: String, enum: ['team_leader', 'member'], default: 'member' }
   }],
   parent: { 
     type: mongoose.Schema.Types.ObjectId, 

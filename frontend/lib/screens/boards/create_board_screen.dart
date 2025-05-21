@@ -34,7 +34,6 @@ class _CreateBoardScreenState extends State<CreateBoardScreen> {
     'To Do',
     'In Progress',
     'Done',
-    'Other',
   ];
 
   @override

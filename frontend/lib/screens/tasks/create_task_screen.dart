@@ -1,4 +1,3 @@
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:frontend/services/auth_service.dart';
 import 'package:intl/intl.dart';
@@ -33,7 +32,7 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
   final _titleController = TextEditingController();
   final _descriptionController = TextEditingController();
   final _taskService = TaskService();
-  final _projectService = ProjectService(Dio(), AuthService());
+  final ProjectService _projectService = ProjectService(AuthService());
   final _userService = UserService();
   final _boardService = BoardService();
   final TeamService _teamService = TeamService();

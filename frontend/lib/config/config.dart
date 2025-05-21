@@ -1,6 +1,6 @@
 // Base URL for the API
-//const String baseUrl = 'http://10.0.2.2:3000/api'; // Android emulator localhost
-const String baseUrl = 'http://localhost:3003/api';
+const String baseUrl = 'http://10.0.2.2:3000/api'; // Android emulator localhost
+//const String baseUrl = 'http://localhost:3003/api';
 
 // API endpoints
 class ApiEndpoints {

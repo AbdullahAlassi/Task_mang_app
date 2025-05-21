@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'package:dio/dio.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/task_model.dart';
@@ -8,13 +7,14 @@ import '../services/project_service.dart';
 
 class TaskService {
   // Update the baseUrl to match your actual backend URL
-  //static const String baseUrl ='http://10.0.2.2:3000/api'; // For Android emulator
   static const String baseUrl =
-      'http://localhost:3003/api'; // For iOS simulator
+      'http://10.0.2.2:3000/api'; // For Android emulator
+  //static const String baseUrl =
+  //    'http://localhost:3003/api'; // For iOS simulator
   // static const String baseUrl = 'http://YOUR_ACTUAL_IP:3000/api'; // For physical device
 
   final AuthService _authService = AuthService();
-  final ProjectService _projectService = ProjectService(Dio(), AuthService());
+  final ProjectService _projectService = ProjectService(AuthService());
 
   // Get token from shared preferences
   Future<String?> _getToken() async {

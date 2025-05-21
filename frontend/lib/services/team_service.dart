@@ -144,7 +144,14 @@ class TeamService {
         },
       );
 
-      return response.statusCode == 200;
+      if (response.statusCode == 200) {
+        return true;
+      } else {
+        final errorData = json.decode(response.body);
+        final errorMessage = errorData['message'] ?? 'Failed to delete team';
+        print('Delete team error: ${response.statusCode} - $errorMessage');
+        throw Exception(errorMessage);
+      }
     } catch (e) {
       print('Error deleting team: $e');
       rethrow;

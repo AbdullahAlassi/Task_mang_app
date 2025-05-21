@@ -1,4 +1,3 @@
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:frontend/screens/profile/profile_screen.dart';
 import 'package:frontend/screens/notifications/notifications_screen.dart';
@@ -25,7 +24,7 @@ class ProjectsScreen extends StatefulWidget {
 
 class _ProjectsScreenState extends State<ProjectsScreen>
     with SingleTickerProviderStateMixin {
-  final ProjectService _projectService = ProjectService(Dio(), AuthService());
+  final ProjectService _projectService = ProjectService(AuthService());
   bool _isLoading = true;
   List<Project> _projects = [];
   ProjectStatus _selectedStatus = ProjectStatus.all;

@@ -33,7 +33,7 @@ const errorMiddleware = require('./middleware/errorMiddleware');
 app.use(errorMiddleware);
 
 // 🔹 Start Server (✅ FIXED: Use `server.listen`, not `app.listen`)
-const PORT = process.env.PORT || 3003;
+const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
 
 module.exports = { app, server };

@@ -15,7 +15,6 @@ import '../tasks/task_detail_screen.dart';
 import '../projects/create_project_screen.dart';
 import '../projects/manage_project_team_screen.dart';
 import '../../services/auth_service.dart';
-import 'package:dio/dio.dart';
 import '../../utils/project_permissions.dart';
 
 class KanbanBoardScreen extends StatefulWidget {
@@ -31,7 +30,7 @@ class KanbanBoardScreen extends StatefulWidget {
 }
 
 class _KanbanBoardScreenState extends State<KanbanBoardScreen> {
-  final ProjectService _projectService = ProjectService(Dio(), AuthService());
+  final ProjectService _projectService = ProjectService(AuthService());
   final BoardService _boardService = BoardService();
   final TaskService _taskService = TaskService();
   Project? _project;

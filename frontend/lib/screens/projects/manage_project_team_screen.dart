@@ -5,7 +5,6 @@ import '../../models/user_model.dart';
 import '../../services/project_service.dart';
 import '../../utils/project_permissions.dart';
 import '../../providers/auth_provider.dart';
-import 'package:dio/dio.dart';
 import '../../services/auth_service.dart';
 
 class ManageProjectTeamScreen extends StatefulWidget {
@@ -24,7 +23,7 @@ class ManageProjectTeamScreen extends StatefulWidget {
 }
 
 class _ManageProjectTeamScreenState extends State<ManageProjectTeamScreen> {
-  final ProjectService _projectService = ProjectService(Dio(), AuthService());
+  final ProjectService _projectService = ProjectService(AuthService());
   List<ProjectMember> _members = [];
   bool _isLoading = true;
   ProjectRole _currentUserRole = ProjectRole.viewer;

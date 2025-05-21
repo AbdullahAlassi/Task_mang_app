@@ -1,4 +1,3 @@
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:frontend/screens/profile/profile_screen.dart';
 import 'package:frontend/screens/projects/create_project_screen.dart';
@@ -35,7 +34,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   List<Task> _ongoingTasks = [];
   int _currentNavIndex = 0;
 
-  final _projectService = ProjectService(Dio(), AuthService());
+  final _projectService = ProjectService(AuthService());
   final _taskService = TaskService();
   final _authService = AuthService();
   final _searchController = TextEditingController();

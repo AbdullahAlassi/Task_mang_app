@@ -10,7 +10,6 @@ import '../tasks/create_task_screen.dart';
 import '../../models/project_model.dart';
 import '../../services/project_service.dart';
 import '../../utils/project_permissions.dart';
-import 'package:dio/dio.dart';
 import '../../services/auth_service.dart';
 
 class BoardDetailScreen extends StatefulWidget {
@@ -31,7 +30,7 @@ class _BoardDetailScreenState extends State<BoardDetailScreen> {
   List<Task> _tasks = [];
   Project? _project;
   ProjectRole? _currentUserRole;
-  final ProjectService _projectService = ProjectService(Dio(), AuthService());
+  final ProjectService _projectService = ProjectService(AuthService());
 
   final _boardService = BoardService();
   final _taskService = TaskService();

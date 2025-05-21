@@ -1,4 +1,3 @@
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
@@ -58,7 +57,7 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
     '#4527A0', // Deep Purple
   ];
 
-  final ProjectService _projectService = ProjectService(Dio(), AuthService());
+  final ProjectService _projectService = ProjectService(AuthService());
   List<User> _availableUsers = [];
   List<User> _filteredUsers = [];
   List<String> _selectedMemberIds = [];
@@ -113,8 +112,7 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
       setState(() {
         _currentUserId = userId;
         _allTeams = teams
-            .where((team) => team.members
-                .any((m) => m.userId == userId && m.role == 'team_lead'))
+            .where((team) => team.members.any((m) => m.userId == userId))
             .toList();
       });
     } catch (e) {
@@ -138,6 +136,46 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
     setState(() {
       _filteredUsers = _filterUsers(_availableUsers, query);
     });
+  }
+
+  void _updateAvailableUsersForTeam() {
+    if (_projectType == 'team' && _selectedTeamId != null) {
+      final selectedTeam = _allTeams.firstWhere(
+        (team) => team.id == _selectedTeamId,
+        orElse: () => Team(
+          id: '',
+          name: '',
+          childrenIds: [],
+          members: [],
+          type: '',
+          status: '',
+          metadata: TeamMetadata(),
+          settings: TeamSettings(
+            allowMemberInvites: false,
+            requireApprovalForJoining: true,
+            visibility: 'private',
+          ),
+          createdAt: DateTime.now(),
+          updatedAt: DateTime.now(),
+        ),
+      );
+      final teamMemberIds = selectedTeam.members.map((m) => m.userId).toSet();
+      final filteredUsers =
+          _availableUsers.where((u) => teamMemberIds.contains(u.id)).toList();
+      setState(() {
+        _filteredUsers = _filterUsers(filteredUsers, _searchController.text);
+        _availableUsers = filteredUsers;
+        // Remove any selected members not in the team
+        _selectedMemberIds = _selectedMemberIds
+            .where((id) => teamMemberIds.contains(id))
+            .toList();
+      });
+    } else {
+      // For personal projects, show all users
+      setState(() {
+        _filteredUsers = _filterUsers(_availableUsers, _searchController.text);
+      });
+    }
   }
 
   Future<void> _selectDate(BuildContext context) async {
@@ -484,6 +522,7 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                                   ),
                                 );
                               });
+                              _updateAvailableUsersForTeam();
                             },
                             decoration: const InputDecoration(
                               labelText: 'Team',
@@ -663,168 +702,246 @@ class _CreateProjectScreenState extends State<CreateProjectScreen> {
                       ),
                     ),
                     const SizedBox(height: 8),
-
-                    // Search Bar
-                    TextFormField(
-                      controller: _searchController,
-                      style: const TextStyle(color: AppColors.textColor),
-                      decoration: InputDecoration(
-                        hintText: 'Search by name or email',
-                        filled: true,
-                        fillColor: AppColors.cardColor,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide.none,
-                        ),
-                        prefixIcon: const Icon(Icons.search,
-                            color: AppColors.primaryColor),
-                        suffixIcon: _searchController.text.isNotEmpty
-                            ? IconButton(
-                                icon: const Icon(Icons.clear,
-                                    color: AppColors.primaryColor),
-                                onPressed: () {
-                                  _searchController.clear();
-                                  _onSearchChanged('');
-                                },
+                    _projectType == 'team'
+                        ? (_selectedTeamId == null
+                            ? Center(
+                                child: Padding(
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 16),
+                                  child: Text(
+                                    'Please select a team first to show the users.',
+                                    style: TextStyle(
+                                      color: AppColors.secondaryTextColor,
+                                      fontSize: 16,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ),
                               )
-                            : null,
-                      ),
-                      onChanged: _onSearchChanged,
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Selected Members
-                    if (_selectedMemberIds.isNotEmpty) ...[
-                      const Text(
-                        'Selected Members',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.textColor,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      ..._availableUsers
-                          .where((user) => _selectedMemberIds.contains(user.id))
-                          .map((user) {
-                        // Check if the user is the manager
-                        final isManager = widget.project?.managerId == user.id;
-                        return ListTile(
-                          leading: Icon(
-                            Icons.person,
-                            color: isManager
-                                ? AppColors.primaryColor
-                                : AppColors.secondaryTextColor,
-                          ),
-                          title: Row(
+                            : Column(
+                                children: [
+                                  ..._availableUsers.map((user) {
+                                    final isSelected =
+                                        _selectedMemberIds.contains(user.id);
+                                    final isManager =
+                                        widget.project?.managerId == user.id;
+                                    return CheckboxListTile(
+                                      value: isSelected,
+                                      onChanged: isManager
+                                          ? null
+                                          : (checked) {
+                                              setState(() {
+                                                if (checked == true) {
+                                                  _selectedMemberIds
+                                                      .add(user.id);
+                                                } else {
+                                                  _selectedMemberIds
+                                                      .remove(user.id);
+                                                }
+                                              });
+                                            },
+                                      title: Row(
+                                        children: [
+                                          Text(user.name),
+                                          if (isManager) ...[
+                                            const SizedBox(width: 8),
+                                            Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                      horizontal: 8,
+                                                      vertical: 2),
+                                              decoration: BoxDecoration(
+                                                color: AppColors.primaryColor
+                                                    .withOpacity(0.1),
+                                                borderRadius:
+                                                    BorderRadius.circular(12),
+                                              ),
+                                              child: const Text(
+                                                'Manager',
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: AppColors.primaryColor,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ],
+                                      ),
+                                      subtitle: Text(user.email),
+                                      controlAffinity:
+                                          ListTileControlAffinity.leading,
+                                    );
+                                  }).toList(),
+                                  const SizedBox(height: 16),
+                                ],
+                              ))
+                        : Column(
                             children: [
-                              Text(user.name),
-                              if (isManager) ...[
-                                const SizedBox(width: 8),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 8, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color:
-                                        AppColors.primaryColor.withOpacity(0.1),
+                              // Personal project: keep search and selection UI
+                              TextFormField(
+                                controller: _searchController,
+                                style:
+                                    const TextStyle(color: AppColors.textColor),
+                                decoration: InputDecoration(
+                                  hintText: 'Search by name or email',
+                                  filled: true,
+                                  fillColor: AppColors.cardColor,
+                                  border: OutlineInputBorder(
                                     borderRadius: BorderRadius.circular(12),
+                                    borderSide: BorderSide.none,
                                   ),
-                                  child: const Text(
-                                    'Manager',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: AppColors.primaryColor,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
-                          subtitle: Text(user.email),
-                          trailing: isManager
-                              ? null // No delete button for manager
-                              : IconButton(
-                                  icon: const Icon(Icons.remove_circle_outline,
-                                      color: Colors.red),
-                                  onPressed: () {
-                                    setState(() {
-                                      _selectedMemberIds.remove(user.id);
-                                      _filteredUsers = _filterUsers(
-                                          _availableUsers,
-                                          _searchController.text);
-                                    });
-                                  },
-                                ),
-                        );
-                      }),
-                      const SizedBox(height: 16),
-                    ],
-
-                    // Search Results
-                    if (_searchController.text.isNotEmpty) ...[
-                      const Text(
-                        'Search Results',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.textColor,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      ..._filteredUsers.map((user) {
-                        // Don't show add button if user is already the manager
-                        final isManager = widget.project?.managerId == user.id;
-                        return ListTile(
-                          leading: Icon(
-                            Icons.person_outline,
-                            color: isManager
-                                ? AppColors.primaryColor
-                                : AppColors.secondaryTextColor,
-                          ),
-                          title: Row(
-                            children: [
-                              Text(user.name),
-                              if (isManager) ...[
-                                const SizedBox(width: 8),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 8, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color:
-                                        AppColors.primaryColor.withOpacity(0.1),
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: const Text(
-                                    'Manager',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: AppColors.primaryColor,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
-                          subtitle: Text(user.email),
-                          trailing: isManager
-                              ? null // No add button for manager
-                              : IconButton(
-                                  icon: const Icon(Icons.add_circle_outline,
+                                  prefixIcon: const Icon(Icons.search,
                                       color: AppColors.primaryColor),
-                                  onPressed: () {
-                                    setState(() {
-                                      _selectedMemberIds.add(user.id);
-                                      _filteredUsers = _filterUsers(
-                                          _availableUsers,
-                                          _searchController.text);
-                                    });
-                                  },
+                                  suffixIcon: _searchController.text.isNotEmpty
+                                      ? IconButton(
+                                          icon: const Icon(Icons.clear,
+                                              color: AppColors.primaryColor),
+                                          onPressed: () {
+                                            _searchController.clear();
+                                            _onSearchChanged('');
+                                          },
+                                        )
+                                      : null,
                                 ),
-                        );
-                      }),
-                    ],
-
-                    const SizedBox(height: 40),
+                                onChanged: _onSearchChanged,
+                              ),
+                              const SizedBox(height: 16),
+                              if (_selectedMemberIds.isNotEmpty) ...[
+                                const Text(
+                                  'Selected Members',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.bold,
+                                    color: AppColors.textColor,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                ..._availableUsers
+                                    .where((user) =>
+                                        _selectedMemberIds.contains(user.id))
+                                    .map((user) {
+                                  final isManager =
+                                      widget.project?.managerId == user.id;
+                                  return ListTile(
+                                    leading: Icon(
+                                      Icons.person,
+                                      color: isManager
+                                          ? AppColors.primaryColor
+                                          : AppColors.secondaryTextColor,
+                                    ),
+                                    title: Row(
+                                      children: [
+                                        Text(user.name),
+                                        if (isManager) ...[
+                                          const SizedBox(width: 8),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(
+                                                horizontal: 8, vertical: 2),
+                                            decoration: BoxDecoration(
+                                              color: AppColors.primaryColor
+                                                  .withOpacity(0.1),
+                                              borderRadius:
+                                                  BorderRadius.circular(12),
+                                            ),
+                                            child: const Text(
+                                              'Manager',
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                color: AppColors.primaryColor,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                    subtitle: Text(user.email),
+                                    trailing: isManager
+                                        ? null
+                                        : IconButton(
+                                            icon: const Icon(
+                                                Icons.remove_circle_outline,
+                                                color: Colors.red),
+                                            onPressed: () {
+                                              setState(() {
+                                                _selectedMemberIds
+                                                    .remove(user.id);
+                                                _filteredUsers = _filterUsers(
+                                                    _availableUsers,
+                                                    _searchController.text);
+                                              });
+                                            },
+                                          ),
+                                  );
+                                }),
+                                const SizedBox(height: 16),
+                              ],
+                              if (_searchController.text.isNotEmpty) ...[
+                                const Text(
+                                  'Search Results',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.bold,
+                                    color: AppColors.textColor,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                ..._filteredUsers.map((user) {
+                                  final isManager =
+                                      widget.project?.managerId == user.id;
+                                  return ListTile(
+                                    leading: Icon(
+                                      Icons.person_outline,
+                                      color: isManager
+                                          ? AppColors.primaryColor
+                                          : AppColors.secondaryTextColor,
+                                    ),
+                                    title: Row(
+                                      children: [
+                                        Text(user.name),
+                                        if (isManager) ...[
+                                          const SizedBox(width: 8),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(
+                                                horizontal: 8, vertical: 2),
+                                            decoration: BoxDecoration(
+                                              color: AppColors.primaryColor
+                                                  .withOpacity(0.1),
+                                              borderRadius:
+                                                  BorderRadius.circular(12),
+                                            ),
+                                            child: const Text(
+                                              'Manager',
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                color: AppColors.primaryColor,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                    subtitle: Text(user.email),
+                                    trailing: isManager
+                                        ? null
+                                        : IconButton(
+                                            icon: const Icon(
+                                                Icons.add_circle_outline,
+                                                color: AppColors.primaryColor),
+                                            onPressed: () {
+                                              setState(() {
+                                                _selectedMemberIds.add(user.id);
+                                                _filteredUsers = _filterUsers(
+                                                    _availableUsers,
+                                                    _searchController.text);
+                                              });
+                                            },
+                                          ),
+                                  );
+                                }),
+                              ],
+                              const SizedBox(height: 40),
+                            ],
+                          ),
 
                     // Save Button
                     SizedBox(
